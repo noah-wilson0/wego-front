@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Calendar } from 'lucide-react';
 import ThreeColumnLayout from './components/ThreeColumnLayout';
 import TimeInputRow from './components/TimeInputRow';
@@ -44,11 +45,14 @@ function getTotalTravelMinutes(scheduleData: ScheduleDay[]) {
   }, 0);
 }
 
-const JejuTravelBooking: React.FC = () => {
+
+const travelPlanTime: React.FC = () => {
   const [scheduleData, setScheduleData] = useState<ScheduleDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const navigate = useNavigate();
+
 
   // 쿠키에서 uuid 읽기
   const getUuidFromCookie = () => Cookies.get('travelPlanUUID');
@@ -109,7 +113,8 @@ const JejuTravelBooking: React.FC = () => {
         `http://localhost:8080/travel_plan/date/temp/schedule/times/${uuid}`,
         { travelDayTimes }
       );
-      alert('시간 설정이 저장되었습니다!');
+      // alert('시간 설정이 저장되었습니다!');
+      navigate('/select');
       // 이후 페이지 이동 등 추가 동작 가능
     } catch (err) {
       alert('시간 설정 저장 실패');
@@ -175,7 +180,7 @@ const JejuTravelBooking: React.FC = () => {
   return (
     <ThreeColumnLayout activeStep={1} setActiveStep={() => {}} onNext={handleSaveTimes}>
       <div className={calendarOpen ? 'blur-sm pointer-events-none' : ''}>
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">제주</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">서울</h2>
         <div className="text-sm text-gray-600 space-y-1 mb-6">
           <div className="flex items-center">
             <span>{scheduleData.length > 0 ? `${scheduleData[0].date} ~ ${scheduleData[scheduleData.length-1].date}` : ''}</span>
@@ -213,4 +218,4 @@ const JejuTravelBooking: React.FC = () => {
   );
 };
 
-export default JejuTravelBooking;
+export default travelPlanTime;
