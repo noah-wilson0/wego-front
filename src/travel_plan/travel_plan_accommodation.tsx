@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Search, Heart, Star, Plus, X } from 'lucide-react';
 import FourColumnLayout from './components/FourColumnLayout';
 import Cookies from 'js-cookie';
 import axios from 'axios';
+import TravelPlanRoute from './travel_plan_route';
 
 interface Accommodation {
   contentId: string;
@@ -34,7 +34,8 @@ const TravelPlanAccommodation: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const navigate = useNavigate();
+  const [showRoutePopup, setShowRoutePopup] = useState(false);
+  const [showValidationError, setShowValidationError] = useState(false); // 유효성 검사 에러 상태 추가
   const observer = useRef<IntersectionObserver | null>(null);
 
   const getUuidFromCookie = () => Cookies.get('travelPlanUUID');
@@ -43,7 +44,8 @@ const TravelPlanAccommodation: React.FC = () => {
     const uuid = getUuidFromCookie();
     if (!uuid) return;
 
-    axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}/accommodation`)
+    // travel_plan_place.tsx와 동일한 엔드포인트 사용
+    axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
       .then(res => {
         const { startDate, endDate } = res.data;
         if (startDate && endDate) {
@@ -122,6 +124,8 @@ const TravelPlanAccommodation: React.FC = () => {
   const addAccommodation = (accommodation: Accommodation) => {
     if (!selectedAccommodations.find(a => a.contentId === accommodation.contentId)) {
       setSelectedAccommodations(prev => [...prev, accommodation]);
+      // 숙소를 추가할 때 에러 상태 초기화
+      setShowValidationError(false);
     }
   };
 
@@ -130,19 +134,43 @@ const TravelPlanAccommodation: React.FC = () => {
   };
 
   const handleNext = async () => {
+    if (selectedAccommodations.length === 0) {
+      setShowValidationError(true);
+      return;
+    }
+  
     const uuid = getUuidFromCookie();
     if (!uuid) {
       alert('UUID가 없습니다.');
       return;
     }
-
-    const requestBody = selectedAccommodations.map(accommodation => ({
-      contentId: accommodation.contentId
-    }));
-
+  
     try {
-      await axios.post(`http://localhost:8080/travel_plan/place/temp/schedule/${uuid}/accommodation`, requestBody);
-      navigate('/route');
+      // travelInfo에서 시작일/총일수 계산
+      const startDate = travelInfo.duration.split(" ~ ")[0];
+      const totalDays = travelInfo.totalDays;
+  
+      const dates: string[] = [];
+      const baseDate = new Date(startDate);
+      for (let i = 0; i < totalDays - 1; i++) {
+        const d = new Date(baseDate);
+        d.setDate(baseDate.getDate() + i);
+        const iso = d.toISOString().split("T")[0];
+        dates.push(iso);
+      }
+  
+      // 날짜별 contentId 매핑
+      const requestBody = dates.map(date => ({
+        date,
+        contentId: selectedAccommodations[0].contentId
+      }));
+  
+      await axios.post(
+        `http://localhost:8080/travel_plan/place/temp/schedule/${uuid}/accommodation`,
+        requestBody
+      );
+  
+      setShowRoutePopup(true);
     } catch (err) {
       alert('숙소 선택 저장 실패');
       console.error(err);
@@ -152,9 +180,20 @@ const TravelPlanAccommodation: React.FC = () => {
   const selectedAccommodationsComponent = (
     <div className="space-y-3">
       {selectedAccommodations.length === 0 ? (
-        <div className="text-center text-gray-500 text-sm mt-8">
-          <div>아직 선택된 숙소가 없습니다.</div>
-          <div className="mt-2">숙소를 추가해보세요!</div>
+        <div className={`text-center text-sm mt-8 p-4 rounded-lg ${
+          showValidationError 
+            ? 'text-red-500 bg-red-50 border border-red-200' 
+            : 'text-gray-500'
+        }`}>
+          <div className={showValidationError ? 'font-medium' : ''}>
+            {showValidationError 
+              ? '숙소를 여행 일정당 1개씩 선택하셔야됩니다'
+              : '아직 선택된 숙소가 없습니다.'
+            }
+          </div>
+          {!showValidationError && (
+            <div className="mt-2">숙소를 추가해보세요!</div>
+          )}
         </div>
       ) : (
         <>
@@ -168,7 +207,10 @@ const TravelPlanAccommodation: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium text-gray-800 text-sm truncate">{accommodation.name}</h4>
-                    <button onClick={() => removeAccommodation(accommodation.contentId)} className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
+                    <button 
+                      onClick={() => removeAccommodation(accommodation.contentId)} 
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                    >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -196,86 +238,98 @@ const TravelPlanAccommodation: React.FC = () => {
   );
 
   return (
-    <FourColumnLayout
-      activeStep={4}
-      setActiveStep={() => {}}
-      onNext={handleNext}
-      selectedPlaces={selectedAccommodationsComponent}
-    >
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">{travelInfo.destination}</h2>
-          <div className="text-sm text-gray-600 space-y-1 mb-4">
-            <div>{travelInfo.duration}</div>
-            <div>총 여행 일: {travelInfo.totalDays > 1 ? `${travelInfo.totalDays - 1}박 ${travelInfo.totalDays}일` : '당일여행'}</div>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold text-gray-800">숙소 선택</span>
-            <button className="text-blue-600 text-sm hover:text-blue-800 transition-colors" onClick={() => setSelectedAccommodations([])}>초기화 ↻</button>
-          </div>
-        </div>
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="숙소명을 검색해보세요"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="space-y-4">
-          {accommodations.length === 0 && loading && (
-            <div className="text-center py-8">숙소 데이터를 불러오는 중입니다...</div>
-          )}
-          {accommodations.map((accommodation, index) => (
-            <div
-              key={accommodation.contentId}
-              ref={index === accommodations.length - 1 ? lastAccommodationRef : null}
-              className="flex gap-4 p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
-            >
-              <img src={accommodation.imageUrl} alt={accommodation.name} className="w-20 h-20 object-cover rounded-lg" />
-              <div className="flex-1">
-                <h4 className="font-semibold text-gray-800 mb-1">{accommodation.name}</h4>
-                <p className="text-sm text-gray-600 mb-2">{accommodation.description}</p>
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="flex items-center gap-1">
-                    <Heart
-                      className={`w-4 h-4 cursor-pointer transition-colors ${
-                        accommodation.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'
-                      }`}
-                      onClick={() => toggleLike(accommodation.contentId)}
-                    />
-                    <span className="text-gray-600">{accommodation.likes}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-gray-600">{accommodation.rating}</span>
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => addAccommodation(accommodation)}
-                disabled={selectedAccommodations.some(a => a.contentId === accommodation.contentId)}
-                className={`flex-shrink-0 w-8 h-8 flex items-center justify-center border rounded-lg transition-colors ${
-                  selectedAccommodations.some(a => a.contentId === accommodation.contentId)
-                    ? 'border-green-500 bg-green-500 text-white'
-                    : 'border-gray-300 hover:bg-gray-50'
-                }`}
+    <>
+      <FourColumnLayout
+        activeStep={4}
+        setActiveStep={() => {}}
+        onNext={handleNext}
+        selectedPlaces={selectedAccommodationsComponent}
+        hasSelectedItems={true} // 항상 버튼을 활성화 상태로 유지
+      >
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">{travelInfo.destination}</h2>
+            <div className="text-sm text-gray-600 space-y-1 mb-4">
+              <div>{travelInfo.duration}</div>
+              <div>총 여행 일: {travelInfo.totalDays > 1 ? `${travelInfo.totalDays - 1}박 ${travelInfo.totalDays}일` : '당일여행'}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-lg font-semibold text-gray-800">숙소 선택</span>
+              <button 
+                className="text-blue-600 text-sm hover:text-blue-800 transition-colors" 
+                onClick={() => setSelectedAccommodations([])}
               >
-                {selectedAccommodations.some(a => a.contentId === accommodation.contentId) ? (
-                  <div className="w-2 h-2 bg-white rounded-full"></div>
-                ) : (
-                  <Plus className="w-4 h-4 text-gray-600" />
-                )}
+                초기화 ↻
               </button>
             </div>
-          ))}
+          </div>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="숙소명을 검색해보세요"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="space-y-4">
+            {accommodations.length === 0 && loading && (
+              <div className="text-center py-8">숙소 데이터를 불러오는 중입니다...</div>
+            )}
+            {accommodations.map((accommodation, index) => (
+              <div
+                key={accommodation.contentId}
+                ref={index === accommodations.length - 1 ? lastAccommodationRef : null}
+                className="flex gap-4 p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+              >
+                <img src={accommodation.imageUrl} alt={accommodation.name} className="w-20 h-20 object-cover rounded-lg" />
+                <div className="flex-1">
+                  <h4 className="font-semibold text-gray-800 mb-1">{accommodation.name}</h4>
+                  <p className="text-sm text-gray-600 mb-2">{accommodation.description}</p>
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-1">
+                      <Heart
+                        className={`w-4 h-4 cursor-pointer transition-colors ${accommodation.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'}`}
+                        onClick={() => toggleLike(accommodation.contentId)}
+                      />
+                      <span className="text-gray-600">{accommodation.likes}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                      <span className="text-gray-600">{accommodation.rating}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => addAccommodation(accommodation)}
+                  disabled={selectedAccommodations.some(a => a.contentId === accommodation.contentId)}
+                  className={`flex-shrink-0 w-8 h-8 flex items-center justify-center border rounded-lg transition-colors ${
+                    selectedAccommodations.some(a => a.contentId === accommodation.contentId)
+                      ? 'border-green-500 bg-green-500 text-white'
+                      : 'border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {selectedAccommodations.some(a => a.contentId === accommodation.contentId) ? (
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  ) : (
+                    <Plus className="w-4 h-4 text-gray-600" />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-    </FourColumnLayout>
+      </FourColumnLayout>
+
+      {showRoutePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-center z-50">
+          <TravelPlanRoute onClose={() => setShowRoutePopup(false)} />
+        </div>
+      )}
+    </>
   );
 };
 

@@ -6,6 +6,8 @@ import TravelDate from './travel_plan/travel_plan_date'
 import Selector from './travel_plan/Travel_Plan_Type_Selector'
 import TravelPlace from './travel_plan/travel_plan_place'
 import TravelAccommodation from'./travel_plan/travel_plan_accommodation'
+import TravelRoute from './travel_plan/travel_plan_route'
+import TravelCheck from './travel_plan/travel_plan_check'
 
 const TravelPlanTimeStep: React.FC = () => {
   return (
@@ -15,6 +17,8 @@ const TravelPlanTimeStep: React.FC = () => {
     <Route path="/select" element={<Selector/>} />
     <Route path="/place" element={<TravelPlace/>} />
     <Route path="/accommodation" element={<TravelAccommodation/>} />
+    <Route path="/route" element={<TravelRoute/>} />
+    <Route path="/check" element={<TravelCheck/>} />
     {/* 추가 라우트들 */}
   </Routes>
   );
