@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { MapPin, Clock, Plus, Minus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MapPin, Clock, Plus, Minus, Car } from 'lucide-react';
+import { SingleTimelineItem } from './components/TimelineIcon';
+import Cookies from 'js-cookie';
+import axios from 'axios';
 
 // 업데이트된 FullCheckColumnLayout 컴포넌트
 interface FullCheckColumnLayoutProps {
@@ -11,6 +14,11 @@ interface FullCheckColumnLayoutProps {
   onNext?: () => void;
   isMainPanelOpen: boolean;
   setIsMainPanelOpen: (open: boolean) => void;
+  selectedDay: number | 'all';
+  setSelectedDay: (day: number | 'all') => void;
+  totalDays: number;
+  onEdit?: () => void;
+  onSave?: () => void;
 }
 
 const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
@@ -22,6 +30,11 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   onNext,
   isMainPanelOpen,
   setIsMainPanelOpen,
+  selectedDay,
+  setSelectedDay,
+  totalDays,
+  onEdit,
+  onSave,
 }) => {
   const [isSettlementPanelOpen, setIsSettlementPanelOpen] = useState(true);
 
@@ -32,26 +45,52 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
         <div>
           <div className="text-2xl font-bold mb-10">LOGO</div>
           <nav className="flex flex-col gap-4 text-sm">
-            <div className={activeStep === 1 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 1. 시간 선택
-            </div>
-            <div className={activeStep === 2 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 2. 생성 방식 선택
-            </div>
-            <div className={activeStep === 3 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 3. 장소 선택
-            </div>
-            <div className={activeStep === 4 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 4. 숙소 선택
-            </div>
+            {/* 전체 버튼 */}
+            <button
+              onClick={() => setSelectedDay('all')}
+              className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
+                selectedDay === 'all' 
+                  ? 'bg-black text-white' 
+                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              }`}
+            >
+              전체
+            </button>
+            
+            {/* 동적으로 생성되는 일차 버튼들 */}
+            {Array.from({ length: totalDays }, (_, index) => {
+              const day = index + 1;
+              return (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDay(day)}
+                  className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
+                    selectedDay === day 
+                      ? 'bg-black text-white' 
+                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  }`}
+                >
+                  {day}일차
+                </button>
+              );
+            })}
           </nav>
         </div>
-        <button
-          className="mt-10 bg-black text-white py-2 px-4 rounded-md text-base"
-          onClick={onNext}
-        >
-          다음
-        </button>
+        
+        <div className="flex flex-col gap-3">
+          <button
+            className="bg-gray-200 text-gray-600 py-2 px-4 rounded-md text-base hover:bg-gray-300 transition-colors"
+            onClick={onEdit}
+          >
+            편집
+          </button>
+          <button
+            className="bg-red-500 text-white py-2 px-4 rounded-md text-base hover:bg-red-600 transition-colors"
+            onClick={onSave}
+          >
+            저장
+          </button>
+        </div>
       </aside>
 
       {/* 가운데 본문 - 토글 가능한 너비 */}
@@ -78,7 +117,12 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           </svg>
         </button>
         
-        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+        <div className="flex-1 overflow-x-auto overflow-y-auto" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
+          <style jsx>{`
+            div::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
           <div className="min-w-max h-full">
             {children}
           </div>
@@ -147,179 +191,312 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
 
 // 데이터 인터페이스
 interface Place {
-  id: string;
-  name: string;
+  content_id: string;
+  place_type: string;
+  title: string;
   image: string;
-  time?: string;
-  category?: string;
+  sequence: number;
+  start_time: string;
+  end_time: string;
+}
+
+interface Accommodation {
+  content_id: string;
+  place_type: string;
+  title: string;
+  image: string;
+  sequence: number;
+  start_time: string;
+  end_time: string;
 }
 
 interface DaySchedule {
-  day: number;
   date: string;
+  start_time: string;
+  end_time: string;
   places: Place[];
+  accommodation: Accommodation | null;
 }
+
+interface Route {
+  sequence: number;
+  origin: string;
+  destination: string;
+  taxiFare: number;
+  distance: number;
+  duration: number; // 초단위
+}
+
+interface DayRoute {
+  [date: string]: Route[];
+}
+
+interface RouteData {
+  route_type: string;
+  daily_route: DayRoute;
+}
+
+interface TravelData {
+  start_date: string;
+  end_date: string;
+  days: DaySchedule[];
+  routes: RouteData[];
+}
+
+// API 함수
+const fetchTravelData = async (): Promise<TravelData> => {
+  // UUID 쿠키에서 가져오기
+  const uuid = Cookies.get('travelPlanUUID');
+  if (!uuid) {
+    throw new Error('UUID가 없습니다. 쿠키를 확인해주세요.');
+  }
+
+  try {
+    // 서버에서 여행 데이터 가져오기
+    const response = await axios.get(`http://localhost:8080/travel_plan/temp/schedule/${uuid}`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ 여행 데이터 불러오기 실패:', error);
+    throw error;
+  }
+};
+
+// 초를 분으로 변환하는 유틸 함수
+const formatDuration = (seconds: number): string => {
+  const minutes = Math.round(seconds / 60);
+  return `${minutes}분`;
+};
 
 // TravelPlanCheck 컴포넌트
 const TravelPlanCheck: React.FC = () => {
   const [activeStep, setActiveStep] = useState(3);
   const [isMainPanelOpen, setIsMainPanelOpen] = useState(true);
-  const [schedules, setSchedules] = useState<DaySchedule[]>([
-    {
-      day: 1,
-      date: '2024년 4월 20일 (토)',
-      places: [
-        { id: '1', name: '성산 일출봉', image: '/api/placeholder/80/60', time: '09:00~11:00', category: '명소' },
-        { id: '2', name: '성산 일출봉', image: '/api/placeholder/80/60', category: '명소' }
-      ]
-    },
-    {
-      day: 2,
-      date: '2024년 4월 21일 (일)',
-      places: [
-        { id: '3', name: '성산 일출봉', image: '/api/placeholder/80/60', time: '09:00~11:00', category: '명소' },
-        { id: '4', name: '성산 일출봉', image: '/api/placeholder/80/60', category: '명소' }
-      ]
-    }
+  const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
+  const [travelData, setTravelData] = useState<TravelData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedPlaces, setSelectedPlaces] = useState([
+    { id: 's1', name: '산둘레숲길', category: '명소', image: '/api/placeholder/60/60', placeType: 'A01' as const },
+    { id: 's2', name: '홍두깨가게', category: '음식점', image: '/api/placeholder/60/60', placeType: 'A02' as const },
+    { id: 's3', name: '치료제과점마을', category: '카페', image: '/api/placeholder/60/60', placeType: 'A03' as const }
   ]);
 
-  const [selectedPlaces, setSelectedPlaces] = useState<Place[]>([
-    { id: 's1', name: '산둘레숲길', category: '등산', image: '/api/placeholder/60/60' },
-    { id: 's2', name: '홍두깨가게', category: '맛집', image: '/api/placeholder/60/60' },
-    { id: 's3', name: '치료제과점마을', category: '카페', image: '/api/placeholder/60/60' }
-  ]);
+  // 컴포넌트 마운트 시 데이터 로드
+  useEffect(() => {
+    const loadTravelData = async () => {
+      try {
+        // UUID 확인
+        const uuid = Cookies.get('travelPlanUUID');
+        if (!uuid) {
+          console.error('❌ UUID가 쿠키에 없습니다.');
+          setLoading(false);
+          return;
+        }
 
-  const addPlace = (dayIndex: number) => {
-    const newPlace: Place = {
-      id: `new-${Date.now()}`,
-      name: '새로운 장소',
-      image: '/api/placeholder/80/60',
-      category: '명소'
+        console.log('📡 여행 데이터 로딩 중... UUID:', uuid);
+        const data = await fetchTravelData();
+        console.log('✅ 여행 데이터 로드 성공:', data);
+        setTravelData(data);
+      } catch (error) {
+        console.error('❌ 여행 데이터 로드 실패:', error);
+        // 에러 발생 시 사용자에게 알림
+        alert('여행 데이터를 불러오는데 실패했습니다. 다시 시도해주세요.');
+      } finally {
+        setLoading(false);
+      }
     };
-    
-    const updatedSchedules = [...schedules];
-    updatedSchedules[dayIndex].places.push(newPlace);
-    setSchedules(updatedSchedules);
+
+    loadTravelData();
+  }, []);
+
+  const handleEdit = () => {
+    console.log('편집 버튼 클릭');
   };
 
-  const removePlace = (dayIndex: number, placeIndex: number) => {
-    const updatedSchedules = [...schedules];
-    updatedSchedules[dayIndex].places.splice(placeIndex, 1);
-    setSchedules(updatedSchedules);
+  const handleSave = () => {
+    console.log('저장 버튼 클릭');
   };
+
+  // placeType에 따른 색상과 카테고리명 반환
+  const getPlaceTypeInfo = (placeType: string) => {
+    switch (placeType) {
+      case 'A01': // 명소
+        return { color: 'bg-blue-500', textColor: 'text-blue-500', label: '명소' };
+      case 'A02': // 음식점
+        return { color: 'bg-red-500', textColor: 'text-red-500', label: '음식점' };
+      case 'A03': // 카페
+        return { color: 'bg-red-500', textColor: 'text-red-500', label: '카페' };
+      case 'B01': // 숙소
+        return { color: 'bg-gray-500', textColor: 'text-gray-500', label: '숙소' };
+      default:
+        return { color: 'bg-gray-400', textColor: 'text-gray-400', label: '기타' };
+    }
+  };
+
+  // 각 날짜별 장소와 숙소를 합쳐서 타임라인 아이템 생성
+  const createTimelineItems = (dayData: DaySchedule, routes: Route[]) => {
+    const items = [];
+    
+    // 장소들 추가
+    dayData.places.forEach((place, index) => {
+      const route = routes.find(r => r.origin === place.content_id);
+      items.push({
+        id: place.content_id,
+        title: place.title,
+        image: place.image,
+        time: `${place.start_time}~${place.end_time}`,
+        placeType: place.place_type as 'A01' | 'A02' | 'A03' | 'B01',
+        duration: route ? formatDuration(route.duration) : undefined
+      });
+    });
+
+    // 숙소 추가
+    if (dayData.accommodation) {
+      items.push({
+        id: dayData.accommodation.content_id,
+        title: dayData.accommodation.title,
+        image: dayData.accommodation.image,
+        time: `${dayData.accommodation.start_time}~${dayData.accommodation.end_time}`,
+        placeType: dayData.accommodation.place_type as 'A01' | 'A02' | 'A03' | 'B01',
+        duration: undefined // 숙소는 마지막이므로 duration 없음
+      });
+    }
+
+    return items;
+  };
+
+  // 날짜별 스케줄과 경로 데이터 결합 (travelData가 있을 때만)
+  const schedules = travelData ? travelData.days.map((day, index) => {
+    const dayRoute = travelData.routes.find(route => 
+      route.daily_route[day.date]
+    );
+    const routes = dayRoute ? dayRoute.daily_route[day.date] : [];
+    
+    return {
+      day: index + 1,
+      date: day.date,
+      places: createTimelineItems(day, routes)
+    };
+  }) : [];
+
+  // 선택된 일차에 따른 스케줄 필터링
+  const filteredSchedules = selectedDay === 'all' 
+    ? schedules 
+    : schedules.filter(schedule => schedule.day === selectedDay);
+
+  // 로딩 중일 때 (Hook 선언 이후에 위치)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">여행 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!travelData) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">여행 데이터를 불러올 수 없습니다.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+          >
+            새로고침
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // 메인 본문 콘텐츠
   const mainContent = (
     <div className="bg-white h-full flex flex-col">
       {/* 헤더 */}
-      <div className="p-6 border-b flex-shrink-0">
-        <div className="flex items-center gap-2 mb-2">
-          <h1 className="text-2xl font-bold">LOGO</h1>
-          <span className="text-sm text-gray-500">제주</span>
+      <div className="p-6 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-4xl font-bold">LOGO</h1>
+            <span className="text-lg text-gray-500">제주</span>
+          </div>
+          <div className="flex gap-2">
+            <button className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs hover:bg-blue-200 transition-colors">
+              일정만보기
+            </button>
+            <button className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs hover:bg-gray-200 transition-colors">
+              시간표로 보기
+            </button>
+            <button className="px-3 py-1 bg-purple-100 text-purple-600 rounded-full text-xs hover:bg-purple-200 transition-colors">
+              공유하기
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm">방문한 장소</span>
-          <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-sm">가고싶은 장소</span>
-          <span className="px-3 py-1 bg-purple-100 text-purple-600 rounded-full text-sm">즐겨찾기</span>
-        </div>
-        <p className="text-sm text-gray-500 mt-2">2024년 4월 20일 (토) ~ 2024년 4월 21일 (일)</p>
+        <p className="text-sm text-gray-500">{travelData.start_date} ~ {travelData.end_date}</p>
       </div>
 
       {/* 가로 스크롤 가능한 타임라인 */}
-      <div className="flex-1 p-6">
-        <div className="flex min-w-max">
-          {/* 왼쪽 네비게이션 */}
-          <div className="w-20 flex flex-col items-center mr-6 flex-shrink-0">
-            <div className="flex flex-col gap-8">
-              {schedules.map((schedule, dayIndex) => (
-                <div key={dayIndex} className="flex flex-col items-center">
-                  <div className="w-12 h-8 bg-black text-white rounded flex items-center justify-center text-sm font-semibold mb-2">
-                    {schedule.day}일차
-                  </div>
-                  {dayIndex < schedules.length - 1 && (
-                    <div className="w-px h-32 bg-gray-300"></div>
-                  )}
-                </div>
-              ))}
-              <div className="flex flex-col gap-4 mt-8">
-                <div className="w-12 h-8 bg-gray-200 text-gray-600 rounded flex items-center justify-center text-sm">
-                  편집
-                </div>
-                <div className="w-12 h-8 bg-red-500 text-white rounded flex items-center justify-center text-sm">
-                  저장
-                </div>
+      <div className="flex-1 p-6 overflow-y-auto" style={{scrollbarWidth: 'none', msOverflowStyle: 'none'}}>
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+        {/* 가로로 스크롤되는 일정들 */}
+        <div className={`flex gap-12 transition-all duration-300 ${isMainPanelOpen ? 'min-w-max' : ''}`}>
+          {filteredSchedules.map((schedule, dayIndex) => (
+            <div key={dayIndex} className={`flex-shrink-0 ${isMainPanelOpen ? 'w-80' : dayIndex === 0 ? 'w-80' : 'w-0 overflow-hidden'} transition-all duration-300`}>
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-3xl font-bold">{schedule.day}일차</h2>
+                <p className="text-xs text-gray-400">{schedule.date}</p>
               </div>
-            </div>
-          </div>
 
-          {/* 가로로 스크롤되는 일정들 */}
-          <div className={`flex gap-8 transition-all duration-300 ${isMainPanelOpen ? 'min-w-max' : ''}`}>
-            {schedules.map((schedule, dayIndex) => (
-              <div key={dayIndex} className={`flex-shrink-0 ${isMainPanelOpen ? 'w-80' : dayIndex === 0 ? 'w-80' : 'w-0 overflow-hidden'} transition-all duration-300`}>
-                <div className="flex justify-between mb-6">
-                  <div>
-                    <h2 className="text-xl font-bold">{schedule.day}일차</h2>
-                    <p className="text-sm text-gray-500">{schedule.date}</p>
-                  </div>
-                </div>
-
-                {/* 장소 리스트 */}
-                <div className="relative">
-                  {/* 세로 연결선 */}
-                  <div className="absolute left-6 top-8 bottom-0 w-px bg-gray-300"></div>
+              {/* 장소 리스트 */}
+              <div className="flex flex-col">
+                {schedule.places.map((place, placeIndex) => {
+                  const isFirst = placeIndex === 0;
+                  const isLast = placeIndex === schedule.places.length - 1;
+                  const placeTypeInfo = getPlaceTypeInfo(place.placeType);
                   
-                  {schedule.places.map((place, placeIndex) => (
-                    <div key={placeIndex} className="flex items-center mb-6 relative">
-                      {/* 타임라인 점 */}
-                      <div className={`w-3 h-3 rounded-full mr-6 z-10 ${
-                        placeIndex === 0 ? 'bg-blue-500' : 
-                        placeIndex === schedule.places.length - 1 ? 'bg-red-500' : 'bg-gray-400'
-                      }`}></div>
-                      
-                      {/* 장소 정보 */}
-                      <div className="flex items-center gap-4 bg-white border border-gray-200 rounded-lg p-3 flex-1">
-                        <img 
-                          src={place.image} 
-                          alt={place.name}
-                          className="w-16 h-12 object-cover rounded"
+                  return (
+                    <div key={placeIndex} className="flex items-start mb-8">
+                      {/* 타임라인 아이템 */}
+                      <div className="flex-shrink-0">
+                        <SingleTimelineItem
+                          index={placeIndex}
+                          color={placeTypeInfo.color}
+                          isFirst={isFirst}
+                          isLast={isLast}
+                          duration={place.duration}
                         />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium">{place.name}</h3>
-                            <span className="text-sm text-blue-500">{place.category}</span>
-                          </div>
+                      </div>
+                      
+                      {/* 장소 카드 - 동그라미 아이콘 중심과 정렬 */}
+                      <div className="ml-4 flex-1" style={{marginTop: isFirst ? '0px' : '178px'}}>
+                        <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
                           {place.time && (
-                            <p className="text-sm text-gray-500 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {place.time}
-                            </p>
+                            <p className="text-sm text-gray-500 mb-3">{place.time}</p>
                           )}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium text-sm">{place.title}</h3>
+                              <span className={`text-xs ${placeTypeInfo.textColor}`}>{placeTypeInfo.label}</span>
+                            </div>
+                            <img 
+                              src={place.image} 
+                              alt={place.title}
+                              className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0"
+                            />
+                          </div>
                         </div>
-                        <button
-                          onClick={() => removePlace(dayIndex, placeIndex)}
-                          className="text-red-500 hover:bg-red-50 p-1 rounded"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
-                  ))}
-                  
-                  {/* 장소 추가 버튼 */}
-                  <div className="flex items-center mb-6 relative">
-                    <div className="w-3 h-3 rounded-full bg-gray-300 mr-6 z-10"></div>
-                    <button
-                      onClick={() => addPlace(dayIndex)}
-                      className="flex items-center gap-2 text-gray-500 hover:text-blue-500 border border-dashed border-gray-300 hover:border-blue-300 rounded-lg p-3 flex-1"
-                    >
-                      <Plus className="w-4 h-4" />
-                      장소 추가
-                    </button>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -330,7 +507,6 @@ const TravelPlanCheck: React.FC = () => {
     <div className="h-full flex flex-col items-center justify-center">
       <h3 className="text-lg font-medium mb-2">지도 영역</h3>
       <p className="text-gray-600">지도 API 연동 예정</p>
-      {/* 실제로는 여기에 지도 컴포넌트가 들어갑니다 */}
     </div>
   );
 
@@ -389,6 +565,11 @@ const TravelPlanCheck: React.FC = () => {
       settlementContent={settlementContent}
       isMainPanelOpen={isMainPanelOpen}
       setIsMainPanelOpen={setIsMainPanelOpen}
+      selectedDay={selectedDay}
+      setSelectedDay={setSelectedDay}
+      totalDays={schedules.length}
+      onEdit={handleEdit}
+      onSave={handleSave}
       onNext={() => setActiveStep(activeStep + 1)}
     >
       {mainContent}

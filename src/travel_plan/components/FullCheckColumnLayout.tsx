@@ -4,18 +4,16 @@ interface FullCheckColumnLayoutProps {
   children: React.ReactNode;
   settlementContent?: React.ReactNode;
   mapContent?: React.ReactNode;
-  activeStep: number;
-  setActiveStep: (step: number) => void;
-  onNext?: () => void;
+  sidebarContent?: React.ReactNode;
+  sidebarButtons?: React.ReactNode;
 }
 
 const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   children,
   settlementContent,
   mapContent,
-  activeStep,
-  setActiveStep,
-  onNext,
+  sidebarContent,
+  sidebarButtons,
 }) => {
   const [isMainPanelOpen, setIsMainPanelOpen] = useState(true);
   const [isSettlementPanelOpen, setIsSettlementPanelOpen] = useState(true);
@@ -27,26 +25,21 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
         <div>
           <div className="text-2xl font-bold mb-10">LOGO</div>
           <nav className="flex flex-col gap-4 text-sm">
-            <div className={activeStep === 1 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 1. 시간 선택
-            </div>
-            <div className={activeStep === 2 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 2. 생성 방식 선택
-            </div>
-            <div className={activeStep === 3 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 3. 장소 선택
-            </div>
-            <div className={activeStep === 4 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 4. 숙소 선택
-            </div>
+            {sidebarContent || (
+              <div className="text-gray-400">
+                사이드바 콘텐츠가 없습니다.
+              </div>
+            )}
           </nav>
         </div>
-        <button
-          className="mt-10 bg-black text-white py-2 px-4 rounded-md text-base"
-          onClick={onNext}
-        >
-          다음
-        </button>
+        
+        <div className="flex flex-col gap-3">
+          {sidebarButtons || (
+            <button className="bg-black text-white py-2 px-4 rounded-md text-base">
+              기본 버튼
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* 가운데 본문 - 토글 가능한 너비 */}
