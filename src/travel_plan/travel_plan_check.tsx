@@ -3,7 +3,9 @@ import { MapPin, Clock, Plus, Minus, Car } from 'lucide-react';
 import { SingleTimelineItem } from './components/TimelineIcon';
 import Cookies from 'js-cookie';
 import axios from 'axios';
-
+/**
+ * TODO: 로그인 구현 후 여행 일정 저장, 편집 기능 구현할 예정
+ */
 // 업데이트된 FullCheckColumnLayout 컴포넌트
 interface FullCheckColumnLayoutProps {
   children: React.ReactNode;
