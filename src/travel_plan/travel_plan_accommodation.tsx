@@ -166,6 +166,7 @@ const TravelPlanAccommodation: React.FC = () => {
       }));
   
       await axios.post(
+
         `http://localhost:8080/travel_plan/place/temp/schedule/${uuid}/accommodation`,
         requestBody
       );

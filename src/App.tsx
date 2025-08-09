@@ -9,6 +9,8 @@ import TravelAccommodation from'./travel_plan/travel_plan_accommodation'
 import TravelRoute from './travel_plan/travel_plan_route'
 import TravelCheck from './travel_plan/travel_plan_check'
 
+import Login from './member/login'
+
 const TravelPlanTimeStep: React.FC = () => {
   return (
     <Routes>
@@ -19,6 +21,7 @@ const TravelPlanTimeStep: React.FC = () => {
     <Route path="/accommodation" element={<TravelAccommodation/>} />
     <Route path="/route" element={<TravelRoute/>} />
     <Route path="/check" element={<TravelCheck/>} />
+    <Route path="/login" element={<Login/>} />
     {/* 추가 라우트들 */}
   </Routes>
   );
