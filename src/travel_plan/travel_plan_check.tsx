@@ -269,12 +269,16 @@ const TravelPlanCheck: React.FC = () => {
   ]);
 
   /** ✅ 보호 API 먼저 시도 → 200이면 회원 데이터, 아니면 temp API로 폴백 */
+  /**
+   * TODO: 1) 회원 전용 API 시도 url 수정 및 travel_plan_id을 알고 있으려면 마이페이지에서 접근해야되므로 그떄 구현하면 됨
+   * 
+   */
   const fetchTravelData = async (): Promise<TravelData> => {
     const uuid = Cookies.get('travelPlanUUID');
     if (!uuid) {
       throw new Error('UUID가 없습니다. 쿠키를 확인해주세요.');
     }
-
+    
     try {
       // 1) 회원 전용 API 시도
       const res = await api.get(`/travel_plan/${uuid}/schedule`);

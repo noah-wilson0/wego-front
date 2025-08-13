@@ -11,17 +11,21 @@ import TravelCheck from './travel_plan/travel_plan_check'
 
 import Login from './member/login'
 
+import Main from './main/mainPage'
+
 const TravelPlanTimeStep: React.FC = () => {
   return (
     <Routes>
-    <Route path="/" element={<TravelDate />} />
-    <Route path="/seoul" element={<TravelTime />} />
+      <Route path="/" element={<Main/>} />
+    <Route path="/date" element={<TravelDate />} />
+    <Route path="/time" element={<TravelTime />} />
     <Route path="/select" element={<Selector/>} />
     <Route path="/place" element={<TravelPlace/>} />
     <Route path="/accommodation" element={<TravelAccommodation/>} />
     <Route path="/route" element={<TravelRoute/>} />
     <Route path="/check" element={<TravelCheck/>} />
     <Route path="/login" element={<Login/>} />
+  
     {/* 추가 라우트들 */}
   </Routes>
   );

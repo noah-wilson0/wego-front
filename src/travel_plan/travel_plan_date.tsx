@@ -56,7 +56,7 @@ const TravelPlanDate: React.FC = () => {
         setUuidToCookie(uuid);
 
         setOpen(false);
-        navigate('/seoul', {
+        navigate('/time', {
           state: {
             from: range.from,
             to: range.to,

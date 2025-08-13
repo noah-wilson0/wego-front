@@ -22,6 +22,9 @@ interface TravelInfo {
   totalDays: number;
 }
 
+// ✅ 팝업과 동일 키로 지역 슬러그를 읽어옵니다.
+const SELECTED_AREA_STORAGE_KEY = 'wego:selectedAreaId';
+
 const TravelPlanAccommodation: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
@@ -35,8 +38,11 @@ const TravelPlanAccommodation: React.FC = () => {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [showRoutePopup, setShowRoutePopup] = useState(false);
-  const [showValidationError, setShowValidationError] = useState(false); // 유효성 검사 에러 상태 추가
+  const [showValidationError, setShowValidationError] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
+
+  // ✅ localStorage에서 읽은 지역 슬러그 저장
+  const [areaSlug, setAreaSlug] = useState<string | null>(null);
 
   const getUuidFromCookie = () => Cookies.get('travelPlanUUID');
 
@@ -44,7 +50,6 @@ const TravelPlanAccommodation: React.FC = () => {
     const uuid = getUuidFromCookie();
     if (!uuid) return;
 
-    // travel_plan_place.tsx와 동일한 엔드포인트 사용
     axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
       .then(res => {
         const { startDate, endDate } = res.data;
@@ -63,21 +68,45 @@ const TravelPlanAccommodation: React.FC = () => {
       .catch(err => console.error('❌ 여행 정보 불러오기 실패', err));
   }, []);
 
+  // ✅ 마운트 시 지역 슬러그 로드
+  useEffect(() => {
+    try {
+      const slug = localStorage.getItem(SELECTED_AREA_STORAGE_KEY);
+      setAreaSlug(slug);
+      if (!slug) {
+        console.warn(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} 가 없습니다. 지역을 지정할 수 없습니다.`);
+      } else {
+        console.log(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} = ${slug}`);
+      }
+    } catch (e) {
+      console.error('선택 지역(slug) 읽기 실패:', e);
+    }
+  }, []);
+
+  // ✅ 지역/검색조건 변화 시 목록 초기화
   useEffect(() => {
     setAccommodations([]);
     setPage(0);
     setHasMore(true);
-  }, []);
+  }, [areaSlug]);
 
   useEffect(() => {
     loadAccommodations();
-  }, [page]);
+  }, [page, areaSlug]); // ✅ areaSlug 의존성 추가
 
   const loadAccommodations = async () => {
     if (!hasMore || loading) return;
+
+    // ✅ 지역 슬러그 없으면 요청하지 않음
+    if (!areaSlug) return;
+
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8080/travel_plan/place/B01/paged?page=${page}&size=20`);
+      // ✅ 엔드포인트 개선: /travel_plan/place/{areaSlug}/B01/paged
+      const res = await axios.get(
+        `http://localhost:8080/travel_plan/place/${encodeURIComponent(areaSlug)}/B01/paged?page=${page}&size=20` // ✅
+      );
+
       const newData: Accommodation[] = res.data.content.map((item: any) => ({
         contentId: item.contentId,
         name: item.title,
@@ -124,7 +153,6 @@ const TravelPlanAccommodation: React.FC = () => {
   const addAccommodation = (accommodation: Accommodation) => {
     if (!selectedAccommodations.find(a => a.contentId === accommodation.contentId)) {
       setSelectedAccommodations(prev => [...prev, accommodation]);
-      // 숙소를 추가할 때 에러 상태 초기화
       setShowValidationError(false);
     }
   };
@@ -138,39 +166,36 @@ const TravelPlanAccommodation: React.FC = () => {
       setShowValidationError(true);
       return;
     }
-  
+
     const uuid = getUuidFromCookie();
     if (!uuid) {
       alert('UUID가 없습니다.');
       return;
     }
-  
+
     try {
-      // travelInfo에서 시작일/총일수 계산
-      const startDate = travelInfo.duration.split(" ~ ")[0];
+      const startDate = travelInfo.duration.split(' ~ ')[0];
       const totalDays = travelInfo.totalDays;
-  
+
       const dates: string[] = [];
       const baseDate = new Date(startDate);
       for (let i = 0; i < totalDays - 1; i++) {
         const d = new Date(baseDate);
         d.setDate(baseDate.getDate() + i);
-        const iso = d.toISOString().split("T")[0];
+        const iso = d.toISOString().split('T')[0];
         dates.push(iso);
       }
-  
-      // 날짜별 contentId 매핑
+
       const requestBody = dates.map(date => ({
         date,
         contentId: selectedAccommodations[0].contentId
       }));
-  
-      await axios.post(
 
+      await axios.post(
         `http://localhost:8080/travel_plan/place/temp/schedule/${uuid}/accommodation`,
         requestBody
       );
-  
+
       setShowRoutePopup(true);
     } catch (err) {
       alert('숙소 선택 저장 실패');
@@ -181,20 +206,19 @@ const TravelPlanAccommodation: React.FC = () => {
   const selectedAccommodationsComponent = (
     <div className="space-y-3">
       {selectedAccommodations.length === 0 ? (
-        <div className={`text-center text-sm mt-8 p-4 rounded-lg ${
-          showValidationError 
-            ? 'text-red-500 bg-red-50 border border-red-200' 
-            : 'text-gray-500'
-        }`}>
+        <div
+          className={`text-center text-sm mt-8 p-4 rounded-lg ${
+            showValidationError
+              ? 'text-red-500 bg-red-50 border border-red-200'
+              : 'text-gray-500'
+          }`}
+        >
           <div className={showValidationError ? 'font-medium' : ''}>
-            {showValidationError 
+            {showValidationError
               ? '숙소를 여행 일정당 1개씩 선택하셔야됩니다'
-              : '아직 선택된 숙소가 없습니다.'
-            }
+              : '아직 선택된 숙소가 없습니다.'}
           </div>
-          {!showValidationError && (
-            <div className="mt-2">숙소를 추가해보세요!</div>
-          )}
+          {!showValidationError && <div className="mt-2">숙소를 추가해보세요!</div>}
         </div>
       ) : (
         <>
@@ -204,12 +228,16 @@ const TravelPlanAccommodation: React.FC = () => {
           {selectedAccommodations.map((accommodation, index) => (
             <div key={accommodation.contentId} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
               <div className="flex items-start gap-3">
-                <img src={accommodation.imageUrl} alt={accommodation.name} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                <img
+                  src={accommodation.imageUrl}
+                  alt={accommodation.name}
+                  className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium text-gray-800 text-sm truncate">{accommodation.name}</h4>
-                    <button 
-                      onClick={() => removeAccommodation(accommodation.contentId)} 
+                    <button
+                      onClick={() => removeAccommodation(accommodation.contentId)}
                       className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <X className="w-4 h-4" />
@@ -245,19 +273,21 @@ const TravelPlanAccommodation: React.FC = () => {
         setActiveStep={() => {}}
         onNext={handleNext}
         selectedPlaces={selectedAccommodationsComponent}
-        hasSelectedItems={true} // 항상 버튼을 활성화 상태로 유지
+        hasSelectedItems={true}
       >
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">{travelInfo.destination}</h2>
             <div className="text-sm text-gray-600 space-y-1 mb-4">
               <div>{travelInfo.duration}</div>
-              <div>총 여행 일: {travelInfo.totalDays > 1 ? `${travelInfo.totalDays - 1}박 ${travelInfo.totalDays}일` : '당일여행'}</div>
+              <div>
+                총 여행 일: {travelInfo.totalDays > 1 ? `${travelInfo.totalDays - 1}박 ${travelInfo.totalDays}일` : '당일여행'}
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-lg font-semibold text-gray-800">숙소 선택</span>
-              <button 
-                className="text-blue-600 text-sm hover:text-blue-800 transition-colors" 
+              <button
+                className="text-blue-600 text-sm hover:text-blue-800 transition-colors"
                 onClick={() => setSelectedAccommodations([])}
               >
                 초기화 ↻
@@ -293,7 +323,9 @@ const TravelPlanAccommodation: React.FC = () => {
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-1">
                       <Heart
-                        className={`w-4 h-4 cursor-pointer transition-colors ${accommodation.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'}`}
+                        className={`w-4 h-4 cursor-pointer transition-colors ${
+                          accommodation.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'
+                        }`}
                         onClick={() => toggleLike(accommodation.contentId)}
                       />
                       <span className="text-gray-600">{accommodation.likes}</span>
