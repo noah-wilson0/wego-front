@@ -14,27 +14,27 @@ export type ChemiItem = {
   };
   
   // ===== 여기 기존 배열 그대로 붙여 넣기 =====
-  export const chemiItems: ChemiItem[] = [
-    { id: "goal", title: "프로 계획러", image: "/src/assets/chemi/goal.png" },
-    { id: "festival", title: "페스타 러버", image: "/src/assets/chemi/festival.png" },
-    { id: "planner", title: "핫플에이트", image: "/src/assets/chemi/planner.png" },
-    { id: "foodie", title: "푸드 파이터", image: "/src/assets/chemi/foodie.png" },
-    { id: "nature", title: "자연광", image: "/src/assets/chemi/nature.png" },
-    { id: "healing", title: "릴랙셔러", image: "/src/assets/chemi/healing.png" },
-    { id: "solo", title: "솔로 여행자", image: "/src/assets/chemi/solo.png" },
-    { id: "thinker", title: "슬로우 트래블러", image: "/src/assets/chemi/thinker.png" },
-    { id: "artist", title: "감성 여행가", image: "/src/assets/chemi/artist.png" },
-    { id: "photo", title: "포토그래퍼", image: "/src/assets/chemi/photo.png" },
-    { id: "active", title: "스포티 크루", image: "/src/assets/chemi/active.png" },
-    { id: "budget", title: "가성비 여행러", image: "/src/assets/chemi/budget.png" },
-    { id: "shopper", title: "여행 플렉서", image: "/src/assets/chemi/shopper.png" },
-    { id: "nightowl", title: "로컬 레이더", image: "/src/assets/chemi/nightowl.png" },
-    { id: "early", title: "로컬 여행가", image: "/src/assets/chemi/early.png" },
-    { id: "culture", title: "문화 탐험가", image: "/src/assets/chemi/culture.png" },
-    { id: "social", title: "대장님과 조수", image: "/src/assets/chemi/social.png" },
-    { id: "random", title: "즉흥 여행가", image: "/src/assets/chemi/random.png" },
-    { id: "sports", title: "오지 탐험가", image: "/src/assets/chemi/sports.png" },
-  ];
+  // export const chemiItems: ChemiItem[] = [
+  //   { id: "goal", title: "프로 계획러", image: "/src/assets/chemi/goal.png" },
+  //   { id: "festival", title: "페스타 러버", image: "/src/assets/chemi/festival.png" },
+  //   { id: "planner", title: "핫플에이트", image: "/src/assets/chemi/planner.png" },
+  //   { id: "foodie", title: "푸드 파이터", image: "/src/assets/chemi/foodie.png" },
+  //   { id: "nature", title: "자연광", image: "/src/assets/chemi/nature.png" },
+  //   { id: "healing", title: "릴랙셔러", image: "/src/assets/chemi/healing.png" },
+  //   { id: "solo", title: "솔로 여행자", image: "/src/assets/chemi/solo.png" },
+  //   { id: "thinker", title: "슬로우 트래블러", image: "/src/assets/chemi/thinker.png" },
+  //   { id: "artist", title: "감성 여행가", image: "/src/assets/chemi/artist.png" },
+  //   { id: "photo", title: "포토그래퍼", image: "/src/assets/chemi/photo.png" },
+  //   { id: "active", title: "스포티 크루", image: "/src/assets/chemi/active.png" },
+  //   { id: "budget", title: "가성비 여행러", image: "/src/assets/chemi/budget.png" },
+  //   { id: "shopper", title: "여행 플렉서", image: "/src/assets/chemi/shopper.png" },
+  //   { id: "nightowl", title: "로컬 레이더", image: "/src/assets/chemi/nightowl.png" },
+  //   { id: "early", title: "로컬 여행가", image: "/src/assets/chemi/early.png" },
+  //   { id: "culture", title: "문화 탐험가", image: "/src/assets/chemi/culture.png" },
+  //   { id: "social", title: "대장님과 조수", image: "/src/assets/chemi/social.png" },
+  //   { id: "random", title: "즉흥 여행가", image: "/src/assets/chemi/random.png" },
+  //   { id: "sports", title: "오지 탐험가", image: "/src/assets/chemi/sports.png" },
+  // ];
   
   // travelAreas도 네가 가진 긴 배열 그대로 붙여 넣기
 // 여행지 데이터

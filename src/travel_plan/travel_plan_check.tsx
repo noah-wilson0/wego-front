@@ -1,20 +1,35 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/TravelPlanCheck.tsx
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { SingleTimelineItem } from './components/TimelineIcon';
 import TravelPlanSavedModal from './components/travelPlanSavedModal';
 import Cookies from 'js-cookie';
 import axios from 'axios';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 
-/**
- * ✅ axios 인스턴스: 쿠키 자동 포함
- */
+/* ===========================================================
+ * axios 인스턴스 (쿠키 자동 포함)
+ * =========================================================== */
 const api = axios.create({
   baseURL: 'http://localhost:8080',
-  withCredentials: true, // HttpOnly 쿠키 포함
+  withCredentials: true,
 });
 
-/** ---------- 레이아웃 컴포넌트 ---------- */
+/* ===========================================================
+ * 공통 에러 로거
+ * =========================================================== */
+const logAxiosError = (err: unknown, label: string) => {
+  if (axios.isAxiosError(err)) {
+    console.error(`[${label}] status=`, err.response?.status, 'data=', err.response?.data);
+  } else {
+    console.error(`[${label}]`, err);
+  }
+};
+
+/* ===========================================================
+ * 레이아웃
+ * - 저장/편집 버튼을 외부 상태로 제어할 수 있도록 canSave/isEditing 추가
+ * =========================================================== */
 interface FullCheckColumnLayoutProps {
   children: React.ReactNode;
   settlementContent?: React.ReactNode;
@@ -29,6 +44,9 @@ interface FullCheckColumnLayoutProps {
   totalDays: number;
   onEdit?: () => void;
   onSave?: () => void;
+  isEditing?: boolean;
+  canSave?: boolean;
+  editDisabled?: boolean; // 생성 모드에서는 편집 버튼 비활성화
 }
 
 const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
@@ -42,6 +60,9 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   totalDays,
   onEdit,
   onSave,
+  isEditing = false,
+  canSave = false,
+  editDisabled = false,
 }) => {
   const [isSettlementPanelOpen, setIsSettlementPanelOpen] = useState(true);
 
@@ -55,9 +76,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
             <button
               onClick={() => setSelectedDay('all')}
               className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
-                selectedDay === 'all'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                selectedDay === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               }`}
             >
               전체
@@ -70,9 +89,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
                   key={day}
                   onClick={() => setSelectedDay(day)}
                   className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
-                    selectedDay === day
-                      ? 'bg-black text-white'
-                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    selectedDay === day ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                   }`}
                 >
                   {day}일차
@@ -84,13 +101,25 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
 
         <div className="flex flex-col gap-3">
           <button
-            className="bg-gray-200 text-gray-600 py-2 px-4 rounded-md text-base hover:bg-gray-300 transition-colors"
+            disabled={editDisabled}
+            className={`py-2 px-4 rounded-md text-base transition-colors ${
+              editDisabled
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : isEditing
+                ? 'bg-gray-800 text-white hover:bg-black'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
             onClick={onEdit}
           >
-            편집
+            {isEditing ? '편집 종료' : '편집'}
           </button>
           <button
-            className="bg-red-500 text-white py-2 px-4 rounded-md text-base hover:bg-red-600 transition-colors"
+            disabled={!canSave}
+            className={`py-2 px-4 rounded-md text-base transition-colors ${
+              canSave
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-red-100 text-red-300 cursor-not-allowed'
+            }`}
             onClick={onSave}
           >
             저장
@@ -119,26 +148,15 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           </svg>
         </button>
 
-        <div
-          className="flex-1 overflow-x-auto overflow-y-auto"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
+        <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <style>{`div::-webkit-scrollbar{display:none}`}</style>
           <div className="min-w-max h-full">{children}</div>
         </div>
       </div>
 
       {/* 오른쪽: 지도/정산 */}
-      <div
-        className={`${
-          isMainPanelOpen ? 'flex-1' : 'w-[65%]'
-        } transition-all duration-300 relative flex flex-col`}
-      >
-        <div
-          className={`${
-            isSettlementPanelOpen ? 'h-1/2' : 'flex-1'
-          } bg-gray-200 p-4 transition-all duration-300`}
-        >
+      <div className={`${isMainPanelOpen ? 'flex-1' : 'w-[65%]'} transition-all duration-300 relative flex flex-col`}>
+        <div className={`${isSettlementPanelOpen ? 'h-1/2' : 'flex-1'} bg-gray-200 p-4 transition-all duration-300`}>
           <div className="h-full bg-white rounded shadow-sm">
             {mapContent || (
               <div className="h-full flex flex-col items-center justify-center">
@@ -149,11 +167,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           </div>
         </div>
 
-        <div
-          className={`${
-            isSettlementPanelOpen ? 'h-1/2' : 'h-8'
-          } bg-white border-t transition-all duration-300 relative flex-shrink-0`}
-        >
+        <div className={`${isSettlementPanelOpen ? 'h-1/2' : 'h-8'} bg-white border-t transition-all duration-300 relative flex-shrink-0`}>
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
             <button
               onClick={() => setIsSettlementPanelOpen(!isSettlementPanelOpen)}
@@ -176,10 +190,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">정산하기</h2>
               </div>
-              <div className="h-full">
-                {/* 정산 영역은 상위에서 주입 */}
-                {settlementContent || <div className="text-gray-500 text-center py-8">정산 내역이 없습니다.</div>}
-              </div>
+              <div className="h-full">{settlementContent || <div className="text-gray-500 text-center py-8">정산 내역이 없습니다.</div>}</div>
             </div>
           )}
         </div>
@@ -188,7 +199,9 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   );
 };
 
-/** ---------- 타입 ---------- */
+/* ===========================================================
+ * 타입 정의
+ * =========================================================== */
 interface Place {
   content_id: string;
   place_type: string;
@@ -198,7 +211,6 @@ interface Place {
   start_time: string;
   end_time: string;
 }
-
 interface Accommodation {
   content_id: string;
   place_type: string;
@@ -208,7 +220,6 @@ interface Accommodation {
   start_time: string;
   end_time: string;
 }
-
 interface DaySchedule {
   date: string;
   start_time: string;
@@ -216,7 +227,6 @@ interface DaySchedule {
   places: Place[];
   accommodation: Accommodation | null;
 }
-
 interface Route {
   sequence: number;
   origin: string;
@@ -225,16 +235,13 @@ interface Route {
   distance?: number;
   duration: number; // 초 단위
 }
-
 interface DayRoute {
   [date: string]: Route[];
 }
-
 interface RouteData {
   route_type: string;
   daily_route: DayRoute;
 }
-
 interface TravelData {
   start_date: string;
   end_date: string;
@@ -242,21 +249,36 @@ interface TravelData {
   routes: RouteData[];
 }
 
-/** ---------- 유틸 ---------- */
+/* ===========================================================
+ * 유틸
+ * =========================================================== */
 const formatDuration = (seconds: number): string => {
   const minutes = Math.round(seconds / 60);
   return `${minutes}분`;
 };
 
-/** ---------- 메인 컴포넌트 ---------- */
+/* ===========================================================
+ * 메인 컴포넌트
+ * =========================================================== */
+type Mode = 'create' | 'edit';
+
 const TravelPlanCheck: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { travelPlanId } = useParams<{ travelPlanId?: string }>();
+
+  // URL 파라미터가 있으면 수정 모드, 없으면 생성 모드
+  const mode: Mode = travelPlanId ? 'edit' : 'create';
+
   const [activeStep, setActiveStep] = useState(3);
   const [isMainPanelOpen, setIsMainPanelOpen] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
   const [travelData, setTravelData] = useState<TravelData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // 수정/저장 제어 (수정 모드: 처음 저장 비활성)
+  const [isEditing, setIsEditing] = useState(mode === 'create'); // 생성 모드면 true로 시작
+  const [isDirty, setIsDirty] = useState(mode === 'create');     // 생성 모드면 true로 시작
 
   // 저장 성공 모달
   const [showSavedModal, setShowSavedModal] = useState(false);
@@ -268,88 +290,121 @@ const TravelPlanCheck: React.FC = () => {
     { id: 's3', name: '치료제과점마을', category: '카페', image: '/api/placeholder/60/60', placeType: 'A03' as const },
   ]);
 
-  /** ✅ 보호 API 먼저 시도 → 200이면 회원 데이터, 아니면 temp API로 폴백 */
-  /**
-   * TODO: 1) 회원 전용 API 시도 url 수정 및 travel_plan_id을 알고 있으려면 마이페이지에서 접근해야되므로 그떄 구현하면 됨
-   * 
-   */
-  const fetchTravelData = async (): Promise<TravelData> => {
-    const uuid = Cookies.get('travelPlanUUID');
-    if (!uuid) {
-      throw new Error('UUID가 없습니다. 쿠키를 확인해주세요.');
-    }
-    
-    try {
-      // 1) 회원 전용 API 시도
-      const res = await api.get(`/travel_plan/${uuid}/schedule`);
-      if (res.status === 200) {
-        return res.data as TravelData; // 회원 데이터
+  /* -------------------------------------------
+   * 데이터 로드
+   *  - edit  : GET /travel_plan/member/schedule/{travelPlanId}
+   *  - create: GET /travel_plan/temp/schedule/{uuid}
+   * ------------------------------------------ */
+  const fetchTravelData = useCallback(async (): Promise<TravelData> => {
+    if (mode === 'edit') {
+      if (!travelPlanId) throw new Error('MISSING_PLAN_ID');
+      try {
+        const res = await api.get(`/travel_plan/member/schedule/${travelPlanId}`);
+        return res.data as TravelData;
+      } catch (err) {
+        logAxiosError(err, 'GET /travel_plan/member/schedule/{planId} FAIL');
+        throw err;
       }
-    } catch {
-      // 상태코드가 무엇이든 회원 API 실패로 간주 → temp로 폴백
     }
 
-    // 2) 비회원 임시 API로 폴백
-    const tempRes = await api.get(`/travel_plan/temp/schedule/${uuid}`);
-    return tempRes.data as TravelData;
-  };
+    // create 모드
+    const uuid = Cookies.get('travelPlanUUID');
+    if (!uuid) {
+      console.error('[fetchTravelData] travelPlanUUID 쿠키가 없습니다.');
+      throw new Error('MISSING_UUID');
+    }
+    try {
+      const tempRes = await api.get(`/travel_plan/temp/schedule/${uuid}`);
+      return tempRes.data as TravelData;
+    } catch (err) {
+      logAxiosError(err, 'GET /travel_plan/temp/schedule/{uuid} FAIL');
+      throw err;
+    }
+  }, [mode, travelPlanId]);
 
   useEffect(() => {
     (async () => {
       try {
+        setLoading(true);
         const data = await fetchTravelData();
-        if (data) setTravelData(data);
-      } catch (e) {
-        alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        setTravelData(data);
+      } catch (e: any) {
+        if (e?.message === 'MISSING_UUID') {
+          // 생성 플로우인데 임시 UUID가 없으면 홈으로
+          navigate('/', { replace: true });
+        } else {
+          alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [fetchTravelData, navigate]);
 
+  /* 편집 토글 (수정 모드에서만 의미 있음) */
   const handleEdit = () => {
-    console.log('편집 버튼 클릭');
+    if (mode === 'edit') {
+      setIsEditing((v) => !v);
+      if (!isEditing) setIsDirty(false); // 편집 시작 시 변경 없음으로 초기화
+    }
   };
 
-  /**
-   * ✅ 저장 버튼
-   * 1) /auth/me로 로그인 여부 확인
-   * 2) 로그인 OK면 /travel_plan/schedule/{uuid} POST로 영속화
-   * 3) 200 OK 시 travelPlanUUID 쿠키 삭제 → 저장 완료 모달 오픈
-   * 4) 로그인 안되어 있으면 /login?redirect=현재경로 로 이동
-   */
-  const handleSave = async () => {
-    const uuid = Cookies.get('travelPlanUUID');
-    if (!uuid) {
-      alert('임시 여행 일정 정보(UUID)가 없습니다.');
-      return;
-    }
+  /* 변경 발생 표시(예: 어떤 입력 변경 핸들러에서 호출) */
+  const markDirty = () => {
+    if (!isEditing) return;
+    setIsDirty(true);
+  };
 
+  /* -------------------------------------------
+   * 저장
+   *  - create: POST /travel_plan/schedule/{uuid}
+   *  - edit  : PUT  /travel_plan/schedule/{travelPlanId} (body: travelData)
+   * ------------------------------------------ */
+  const handleSave = async () => {
+    if (!travelData) return;
+
+    // 로그인 확인
     try {
-      await api.get('/auth/me'); // 200 OK면 로그인 상태
-    } catch {
-      // 미인증 등 실패 → 로그인 페이지로 라우팅 (현재 경로를 redirect로 전달)
+      await api.get('/auth/me');
+    } catch (err) {
+      logAxiosError(err, 'auth/me FAIL → redirect to login');
       const redirect = encodeURIComponent(location.pathname + location.search);
       navigate(`/login?redirect=${redirect}`);
       return;
     }
 
     try {
-      console.log("DB저장 시도");
-      const res = await api.post(`/travel_plan/schedule/${uuid}`);
-      if (res.status === 200) {
-        // 저장 성공 → 임시 UUID 삭제 + 모달 표시
-        Cookies.remove('travelPlanUUID');
-        setShowSavedModal(true);
+      if (mode === 'create') {
+        const uuid = Cookies.get('travelPlanUUID');
+        if (!uuid) {
+          alert('임시 여행 일정 정보(UUID)가 없습니다.');
+          return;
+        }
+        const res = await api.post(`/travel_plan/schedule/${uuid}`);
+        if (res.status === 200) {
+          Cookies.remove('travelPlanUUID');
+          setShowSavedModal(true);
+        } else {
+          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
       } else {
-        alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        if (!travelPlanId) return;
+        const res = await api.put(`/travel_plan/schedule/${travelPlanId}`, travelData);
+        if (res.status === 200) {
+          setIsDirty(false);
+          setIsEditing(false);
+          setShowSavedModal(true);
+        } else {
+          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
       }
     } catch (e) {
-      alert('catch저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-      console.error(e);
+      logAxiosError(e, 'save FAIL');
+      alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
   };
 
+  /* 타입/색상 매핑 */
   const getPlaceTypeInfo = (placeType: string) => {
     switch (placeType) {
       case 'A01':
@@ -409,6 +464,10 @@ const TravelPlanCheck: React.FC = () => {
 
   const filteredSchedules = selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
 
+  /* 저장 버튼 활성화 조건 */
+  const canSave = mode === 'create' ? true : (isEditing && isDirty);
+  const editDisabled = mode === 'create'; // 생성 모드에서는 '편집' 비활성
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -443,12 +502,8 @@ const TravelPlanCheck: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h1 className="text-4xl font-bold">LOGO</h1>
+            {/* 목적지 표시는 샘플 */}
             <span className="text-lg text-gray-500">제주</span>
-          </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs hover:bg-blue-200">일정만보기</button>
-            <button className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs hover:bg-gray-200">시간표로 보기</button>
-            <button className="px-3 py-1 bg-purple-100 text-purple-600 rounded-full text-xs hover:bg-purple-200">공유하기</button>
           </div>
         </div>
         <p className="text-sm text-gray-500">
@@ -489,7 +544,7 @@ const TravelPlanCheck: React.FC = () => {
                         />
                       </div>
 
-                      {/* 카드: 동그라미와 x정렬 */}
+                      {/* 카드 */}
                       <div className="ml-4 flex-1" style={{ marginTop: isFirst ? '0px' : '178px' }}>
                         <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
                           {place.time && <p className="text-sm text-gray-500 mb-3">{place.time}</p>}
@@ -501,6 +556,8 @@ const TravelPlanCheck: React.FC = () => {
                             <img src={place.image} alt={place.title} className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0" />
                           </div>
                         </div>
+                        {/* 예시: 이 카드에서 뭔가 수정하면 markDirty() 호출 */}
+                        {/* {isEditing && <button onClick={markDirty}>이 카드 수정됨 표시</button>} */}
                       </div>
                     </div>
                   );
@@ -570,18 +627,26 @@ const TravelPlanCheck: React.FC = () => {
         totalDays={schedules.length}
         onEdit={handleEdit}
         onSave={handleSave}
+        isEditing={isEditing}
+        canSave={canSave}
+        editDisabled={editDisabled}
         onNext={() => setActiveStep(activeStep + 1)}
       >
         {mainContent}
       </FullCheckColumnLayout>
 
-      {/* ✅ 저장 성공 모달 */}
+      {/* 저장 성공 모달 */}
       <TravelPlanSavedModal
         show={showSavedModal}
         onClose={() => setShowSavedModal(false)}
         onConfirm={() => {
           setShowSavedModal(false);
-          navigate('/mypage');
+          if (mode === 'create') {
+            navigate('/mypage');
+          } else {
+            // 수정 모드에선 현재 페이지 유지 or 마이페이지로 이동 등 정책에 맞게
+            // navigate('/mypage');
+          }
         }}
       />
     </>

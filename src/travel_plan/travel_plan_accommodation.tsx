@@ -22,9 +22,6 @@ interface TravelInfo {
   totalDays: number;
 }
 
-// ✅ 팝업과 동일 키로 지역 슬러그를 읽어옵니다.
-const SELECTED_AREA_STORAGE_KEY = 'wego:selectedAreaId';
-
 const TravelPlanAccommodation: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
@@ -41,17 +38,16 @@ const TravelPlanAccommodation: React.FC = () => {
   const [showValidationError, setShowValidationError] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
 
-  // ✅ localStorage에서 읽은 지역 슬러그 저장
-  const [areaSlug, setAreaSlug] = useState<string | null>(null);
-
   const getUuidFromCookie = () => Cookies.get('travelPlanUUID');
 
+  // 여행 기간/정보 불러오기
   useEffect(() => {
     const uuid = getUuidFromCookie();
     if (!uuid) return;
 
-    axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
-      .then(res => {
+    axios
+      .get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
+      .then((res) => {
         const { startDate, endDate } = res.data;
         if (startDate && endDate) {
           const start = new Date(startDate);
@@ -59,52 +55,42 @@ const TravelPlanAccommodation: React.FC = () => {
           const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
           setTravelInfo({
-            destination: '제주',
+            destination: '제주', // TODO: 서버에서 목적지(지역명) 내려주면 치환
             duration: `${startDate} ~ ${endDate}`,
             totalDays: diffDays
           });
         }
       })
-      .catch(err => console.error('❌ 여행 정보 불러오기 실패', err));
+      .catch((err) => console.error('❌ 여행 정보 불러오기 실패', err));
   }, []);
 
-  // ✅ 마운트 시 지역 슬러그 로드
-  useEffect(() => {
-    try {
-      const slug = localStorage.getItem(SELECTED_AREA_STORAGE_KEY);
-      setAreaSlug(slug);
-      if (!slug) {
-        console.warn(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} 가 없습니다. 지역을 지정할 수 없습니다.`);
-      } else {
-        console.log(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} = ${slug}`);
-      }
-    } catch (e) {
-      console.error('선택 지역(slug) 읽기 실패:', e);
-    }
-  }, []);
-
-  // ✅ 지역/검색조건 변화 시 목록 초기화
+  // 첫 로드 시 목록 초기화
   useEffect(() => {
     setAccommodations([]);
     setPage(0);
     setHasMore(true);
-  }, [areaSlug]);
+  }, []);
 
+  // 페이지 변경 시 로드
   useEffect(() => {
     loadAccommodations();
-  }, [page, areaSlug]); // ✅ areaSlug 의존성 추가
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const loadAccommodations = async () => {
     if (!hasMore || loading) return;
 
-    // ✅ 지역 슬러그 없으면 요청하지 않음
-    if (!areaSlug) return;
+    const uuid = getUuidFromCookie();
+    if (!uuid) {
+      console.warn('⚠️ uuid 쿠키가 없습니다. 요청을 건너뜁니다.');
+      return;
+    }
 
     setLoading(true);
     try {
-      // ✅ 엔드포인트 개선: /travel_plan/place/{areaSlug}/B01/paged
+      // ✅ 변경된 엔드포인트: /travel_plan/place/{uuid}/B01/paged
       const res = await axios.get(
-        `http://localhost:8080/travel_plan/place/${encodeURIComponent(areaSlug)}/B01/paged?page=${page}&size=20` // ✅
+        `http://localhost:8080/travel_plan/place/${encodeURIComponent(uuid)}/B01/paged?page=${page}&size=20`
       );
 
       const newData: Accommodation[] = res.data.content.map((item: any) => ({
@@ -118,7 +104,7 @@ const TravelPlanAccommodation: React.FC = () => {
         isLiked: false
       }));
 
-      setAccommodations(prev => [...prev, ...newData]);
+      setAccommodations((prev) => [...prev, ...newData]);
       setHasMore(!res.data.last);
     } catch (err) {
       console.error('❌ 숙소 불러오기 실패', err);
@@ -127,22 +113,25 @@ const TravelPlanAccommodation: React.FC = () => {
     }
   };
 
-  const lastAccommodationRef = useCallback((node: HTMLDivElement | null) => {
-    if (loading) return;
-    if (observer.current) observer.current.disconnect();
+  const lastAccommodationRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
 
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        setPage(prev => prev + 1);
-      }
-    });
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setPage((prev) => prev + 1);
+        }
+      });
 
-    if (node) observer.current.observe(node);
-  }, [loading, hasMore]);
+      if (node) observer.current.observe(node);
+    },
+    [loading, hasMore]
+  );
 
   const toggleLike = (contentId: string) => {
-    setAccommodations(prev =>
-      prev.map(accommodation =>
+    setAccommodations((prev) =>
+      prev.map((accommodation) =>
         accommodation.contentId === contentId
           ? { ...accommodation, isLiked: !accommodation.isLiked }
           : accommodation
@@ -151,14 +140,14 @@ const TravelPlanAccommodation: React.FC = () => {
   };
 
   const addAccommodation = (accommodation: Accommodation) => {
-    if (!selectedAccommodations.find(a => a.contentId === accommodation.contentId)) {
-      setSelectedAccommodations(prev => [...prev, accommodation]);
+    if (!selectedAccommodations.find((a) => a.contentId === accommodation.contentId)) {
+      setSelectedAccommodations((prev) => [...prev, accommodation]);
       setShowValidationError(false);
     }
   };
 
   const removeAccommodation = (contentId: string) => {
-    setSelectedAccommodations(prev => prev.filter(a => a.contentId !== contentId));
+    setSelectedAccommodations((prev) => prev.filter((a) => a.contentId !== contentId));
   };
 
   const handleNext = async () => {
@@ -186,7 +175,7 @@ const TravelPlanAccommodation: React.FC = () => {
         dates.push(iso);
       }
 
-      const requestBody = dates.map(date => ({
+      const requestBody = dates.map((date) => ({
         date,
         contentId: selectedAccommodations[0].contentId
       }));
@@ -208,23 +197,17 @@ const TravelPlanAccommodation: React.FC = () => {
       {selectedAccommodations.length === 0 ? (
         <div
           className={`text-center text-sm mt-8 p-4 rounded-lg ${
-            showValidationError
-              ? 'text-red-500 bg-red-50 border border-red-200'
-              : 'text-gray-500'
+            showValidationError ? 'text-red-500 bg-red-50 border border-red-200' : 'text-gray-500'
           }`}
         >
           <div className={showValidationError ? 'font-medium' : ''}>
-            {showValidationError
-              ? '숙소를 여행 일정당 1개씩 선택하셔야됩니다'
-              : '아직 선택된 숙소가 없습니다.'}
+            {showValidationError ? '숙소를 여행 일정당 1개씩 선택하셔야됩니다' : '아직 선택된 숙소가 없습니다.'}
           </div>
           {!showValidationError && <div className="mt-2">숙소를 추가해보세요!</div>}
         </div>
       ) : (
         <>
-          <div className="text-sm text-gray-600 mb-4">
-            총 {selectedAccommodations.length}개 숙소 선택됨
-          </div>
+          <div className="text-sm text-gray-600 mb-4">총 {selectedAccommodations.length}개 숙소 선택됨</div>
           {selectedAccommodations.map((accommodation, index) => (
             <div key={accommodation.contentId} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
               <div className="flex items-start gap-3">
@@ -246,7 +229,9 @@ const TravelPlanAccommodation: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1 line-clamp-2">{accommodation.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                     <div className="flex items-center gap-1">
-                      <Heart className={`w-3 h-3 ${accommodation.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                      <Heart
+                        className={`w-3 h-3 ${accommodation.isLiked ? 'fill-red-500 text-red-500' : ''}`}
+                      />
                       <span>{accommodation.likes}</span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -316,7 +301,11 @@ const TravelPlanAccommodation: React.FC = () => {
                 ref={index === accommodations.length - 1 ? lastAccommodationRef : null}
                 className="flex gap-4 p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
               >
-                <img src={accommodation.imageUrl} alt={accommodation.name} className="w-20 h-20 object-cover rounded-lg" />
+                <img
+                  src={accommodation.imageUrl}
+                  alt={accommodation.name}
+                  className="w-20 h-20 object-cover rounded-lg"
+                />
                 <div className="flex-1">
                   <h4 className="font-semibold text-gray-800 mb-1">{accommodation.name}</h4>
                   <p className="text-sm text-gray-600 mb-2">{accommodation.description}</p>
@@ -338,14 +327,14 @@ const TravelPlanAccommodation: React.FC = () => {
                 </div>
                 <button
                   onClick={() => addAccommodation(accommodation)}
-                  disabled={selectedAccommodations.some(a => a.contentId === accommodation.contentId)}
+                  disabled={selectedAccommodations.some((a) => a.contentId === accommodation.contentId)}
                   className={`flex-shrink-0 w-8 h-8 flex items-center justify-center border rounded-lg transition-colors ${
-                    selectedAccommodations.some(a => a.contentId === accommodation.contentId)
+                    selectedAccommodations.some((a) => a.contentId === accommodation.contentId)
                       ? 'border-green-500 bg-green-500 text-white'
                       : 'border-gray-300 hover:bg-gray-50'
                   }`}
                 >
-                  {selectedAccommodations.some(a => a.contentId === accommodation.contentId) ? (
+                  {selectedAccommodations.some((a) => a.contentId === accommodation.contentId) ? (
                     <div className="w-2 h-2 bg-white rounded-full"></div>
                   ) : (
                     <Plus className="w-4 h-4 text-gray-600" />

@@ -29,9 +29,6 @@ const categoryMap: Record<string, string> = {
   '숙박': 'B01'
 };
 
-// ✅ 팝업에서 저장했던 localStorage 키 (DestinationPopup과 동일하게 유지)
-const SELECTED_AREA_STORAGE_KEY = 'wego:selectedAreaId';
-
 const travelPlanPlace: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('장소');
@@ -45,9 +42,6 @@ const travelPlanPlace: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-
-  // ✅ localStorage에서 읽은 지역 슬러그를 보관
-  const [areaSlug, setAreaSlug] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const observer = useRef<IntersectionObserver | null>(null);
@@ -79,37 +73,24 @@ const travelPlanPlace: React.FC = () => {
       .catch(err => console.error('❌ 여행 정보 불러오기 실패', err));
   }, []);
 
-  // ✅ 컴포넌트 마운트 시, 팝업에서 저장한 지역 슬러그 읽기
-  useEffect(() => {
-    try {
-      const slug = localStorage.getItem(SELECTED_AREA_STORAGE_KEY);
-      setAreaSlug(slug);
-      if (!slug) {
-        console.warn(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} 가 없습니다. 기본 지역으로 요청할 수 없습니다.`);
-      } else {
-        console.log(`[localStorage] ${SELECTED_AREA_STORAGE_KEY} = ${slug}`);
-      }
-    } catch (e) {
-      console.error('선택 지역(slug) 읽기 실패:', e);
-    }
-  }, []);
-
-  // ✅ 카테고리/지역이 바뀌면 목록 초기화 & 첫 페이지부터 다시 로드
+  // ✅ 카테고리 변경 시 목록 초기화 & 첫 페이지부터 다시 로드
   useEffect(() => {
     setPlaces([]);
     setPage(0);
     setHasMore(true);
-  }, [selectedCategory, areaSlug]);
+  }, [selectedCategory]);
 
+  // ✅ page/카테고리 변경되면 로드
   useEffect(() => {
     loadPlaces();
-  }, [page, selectedCategory, areaSlug]); // ✅ areaSlug 의존성 추가
+  }, [page, selectedCategory]); // areaSlug 의존성 제거
 
   const loadPlaces = async () => {
     if (!hasMore || loading) return;
 
-    // ✅ 지역 슬러그가 없으면 요청하지 않음
-    if (!areaSlug) {
+    const uuid = getUuidFromCookie();
+    if (!uuid) {
+      console.warn('⚠️ uuid 쿠키가 없습니다. 요청을 건너뜁니다.');
       return;
     }
 
@@ -117,10 +98,9 @@ const travelPlanPlace: React.FC = () => {
     try {
       const type = categoryMap[selectedCategory];
 
-      // ✅ 변경된 백엔드 엔드포인트에 맞춰 areaSlug 포함해서 요청
-      //    GET /travel_plan/place/{areaName}/{placeType}/paged?page=&size=
+      // ✅ 변경된 백엔드 엔드포인트로 호출: /travel_plan/place/{uuid}/{placeType}/paged
       const res = await axios.get(
-        `http://localhost:8080/travel_plan/place/${encodeURIComponent(areaSlug)}/${type}/paged?page=${page}&size=20`
+        `http://localhost:8080/travel_plan/place/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`
       );
 
       const newData: Place[] = res.data.content.map((item: any) => ({
