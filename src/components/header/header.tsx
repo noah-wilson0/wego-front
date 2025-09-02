@@ -9,7 +9,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ activeMenu = '', onMenuClick }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isLoggedIn, loading, logout } = useAuth(); // userName 제거
+  const { isLoggedIn, loading, logout } = useAuth();
 
   const menuItems = useMemo(() => {
     const base = [
@@ -26,7 +26,9 @@ const Header: React.FC<HeaderProps> = ({ activeMenu = '', onMenuClick }) => {
   const handleMenuClick = async (menuKey: string) => {
     if (menuKey === 'logout') {
       await logout();
-      onMenuClick?.('login');
+      // 🔸 이전: onMenuClick?.('login')  → 로그인 페이지로 이동시킴
+      // 🔸 변경: AuthProvider.logout 이 이미 "/"로 이동하므로 추가 네비게이션 불필요
+      // onMenuClick?.('home'); // (원하면 명시적으로 홈 클릭 신호를 보낼 수도 있음)
       setIsMenuOpen(false);
       return;
     }

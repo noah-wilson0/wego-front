@@ -2,19 +2,67 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import axios from "axios";
 import { Search, ChevronDown, MapPin } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import AppHeader from "../components/AppHeader"; // ✅ 공통 헤더 사용
+import { useLocation, useNavigate } from "react-router-dom";
+import AppHeader from "../components/header/AppHeader";
 import Footer from "./components/footer";
 import TravelAreaCard from "./components/TravelAreaCard";
 import type { TravelAreaData } from "./components/TravelAreaCard";
 import ChemiCard from "./components/ChemiCard";
-import TravelReviewCard from "./components/TravelReviewCard";
-import type { TravelReviewData } from "./components/TravelReviewCard";
+import TravelReviewCard from "../feed/components/TravelReviewCard";
+import type { TravelReviewData } from "../feed/components/TravelReviewCard";
 import DestinationPopup from "./components/DestinationPopup";
 
+// ✅ 서버 Feed 타입
+import type { FeedResponse } from "../data/feed";
+
 // ✅ travelData에서 타입과 다른 데이터만 사용
-import { travelAreas, travelAreasById } from "./data/travelData";
+import { travelAreas } from "./data/travelData";
 import type { ChemiItem } from "./data/travelData";
+
+/* ========================= 공통 axios ========================= */
+const api = axios.create({
+  baseURL: "http://localhost:8080",
+  withCredentials: true,
+});
+
+/* ========================= 유틸: duration ========================= */
+const diffDays = (startISO?: string, endISO?: string) => {
+  if (!startISO || !endISO) return 0;
+  const s = new Date(startISO);
+  const e = new Date(endISO);
+  const ms = e.getTime() - s.getTime();
+  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
+};
+const formatDuration = (startISO?: string, endISO?: string) => {
+  const d = diffDays(startISO, endISO);
+  return d > 0 ? `${d}일` : "";
+};
+
+// PlaceItem.title 3개까지 수집
+const collectTopPlaceTitles = (days: FeedResponse["days"] | undefined): string[] => {
+  const titles: string[] = [];
+  if (!days) return titles;
+  for (const d of days) {
+    const places = d?.places ?? [];
+    for (const p of places) {
+      if (p?.title) {
+        titles.push(p.title);
+        if (titles.length === 3) return titles;
+      }
+    }
+  }
+  return titles;
+};
+
+// 첫 장소 이미지 커버
+const findFirstPlaceImage = (days: FeedResponse["days"] | undefined): string | undefined => {
+  if (!days) return;
+  for (const d of days) {
+    const first = d?.places?.[0];
+    if (first?.image) return first.image;
+  }
+  return;
+};
 
 /* ========================= 여행 일정 생성 드롭다운 ========================= */
 const TravelPlanDropdown: React.FC<{
@@ -38,17 +86,14 @@ const TravelPlanDropdown: React.FC<{
   const handleButtonClick = () => setIsDropdownOpen((v) => !v);
 
   const handleDestinationClick = (area: TravelAreaData) => {
-    console.log(`${area.koreanName} 선택됨`);
     setIsDropdownOpen(false);
     onSelect(area);
   };
 
   const handleMoreDestinations = () => {
-    console.log("더 많은 여행지 찾기 클릭됨");
     setIsDropdownOpen(false);
   };
 
-  // 외부 클릭 시 닫기
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -109,16 +154,16 @@ const TravelPlanDropdown: React.FC<{
 
             {/* 리스트 */}
             <div className="max-h-64 overflow-y-auto">
-              {filtered.map((area) => (
+              {filtered.map((a) => (
                 <button
-                  key={area.id}
-                  onClick={() => handleDestinationClick(area)}
+                  key={a.id}
+                  onClick={() => handleDestinationClick(a)}
                   className="w-full px-6 py-3 text-left hover:bg-gray-50 transition-colors group flex items-center gap-3"
                 >
                   <div className="w-2 h-2 bg-gray-300 rounded-full group-hover:bg-purple-400 transition-colors flex-shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-gray-800">{getRegionName(area.koreanName)}</div>
-                    <div className="text-sm text-gray-500">{getLocationInfo(area.koreanName)}</div>
+                    <div className="font-semibold text-gray-800">{getRegionName(a.koreanName)}</div>
+                    <div className="text-sm text-gray-500">{getLocationInfo(a.koreanName)}</div>
                   </div>
                 </button>
               ))}
@@ -143,14 +188,35 @@ const TravelPlanDropdown: React.FC<{
 };
 
 /* --------------------------- 메인 페이지 --------------------------- */
+type SpringPage<T> = {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  first: boolean;
+  last: boolean;
+};
+
 const TravelMainPage: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // ✅ 케미 데이터: 서버에서 가져와서 상태로 보관
   const [chemiItemsState, setChemiItemsState] = useState<ChemiItem[]>([]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // ✅ 응답 DTO 타입과 id 파생 유틸
+  // ✅ 활성 메뉴
+  const activeMenu = useMemo(() => {
+    const p = location.pathname;
+    if (p === "/") return "home";
+    if (p.startsWith("/feed")) return "feed";
+    if (p.startsWith("/login")) return "login";
+    if (p.startsWith("/trip")) return "trip";
+    if (p.startsWith("/guide")) return "guide";
+    if (p.startsWith("/mypage")) return "mypage";
+    return "home";
+  }, [location.pathname]);
+
+  // ✅ 케미 목록
   type ChemiDto = { name: string; image: string; description: string };
   const deriveId = (imagePath: string, name: string) => {
     if (imagePath) {
@@ -161,11 +227,10 @@ const TravelMainPage: React.FC = () => {
     return name.replace(/\s+/g, "").toLowerCase();
   };
 
-  // ✅ 서버에서 케미 목록 불러오기
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get("http://localhost:8080/chemi/all");
+        const res = await api.get("/chemi/all");
         const list: ChemiDto[] = res?.data?.chemiDtoList ?? [];
         const mapped: ChemiItem[] = list.map((d) => ({
           id: deriveId(d.image, d.name),
@@ -175,53 +240,23 @@ const TravelMainPage: React.FC = () => {
         setChemiItemsState(mapped);
       } catch (e) {
         console.error("[TravelMainPage] /chemi/all fetch error:", e);
-        setChemiItemsState([]); // 실패 시 빈 배열
+        setChemiItemsState([]);
       }
     })();
   }, []);
-
-  // ✅ navigate 훅
-  const navigate = useNavigate();
 
   // 팝업 상태
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState<TravelAreaData | null>(null);
 
-  // ✅ 헤더 메뉴 클릭 처리 (AppHeader → 여기로 위임됨)
-  const handleHeaderMenuClick = (menu: string) => {
-    setCurrentPage(menu);
-    switch (menu) {
-      case "home":
-        navigate("/");
-        break;
-      case "login":
-        navigate("/login");
-        break;
-      case "trip":
-        // TODO: 여행지 메인 라우팅 연결 시 사용
-        console.log("여행지 페이지로 이동");
-        break;
-      case "guide":
-        console.log("가이드 페이지로 이동");
-        break;
-      case "feed":
-        console.log("피드 페이지로 이동");
-        break;
-      default:
-        break;
-    }
-  };
-
+  // ✅ 카드 클릭 시 MainTravelAreasPage와 동일하게 팝업 오픈
   const handleAreaClick = (area: TravelAreaData) => {
-    console.log(`${area.koreanName} 클릭됨`);
+    setSelectedDestination(area);
+    setIsPopupOpen(true);
   };
 
   const handleMoreAreasClick = () => {
-    console.log("더 많은 여행지 보기 클릭됨");
-  };
-
-  const handleReviewClick = (review: TravelReviewData) => {
-    console.log(`${review.title} 리뷰 클릭됨`);
+    navigate("/areas");
   };
 
   const handleDropdownSelect = (area: TravelAreaData) => {
@@ -234,89 +269,79 @@ const TravelMainPage: React.FC = () => {
     setSelectedDestination(null);
   };
 
-  // 메인 페이지에서는 처음 8개만 표시
   const displayedAreas = travelAreas.slice(0, 8);
 
-  // 여행 리뷰 데이터 (기존 그대로)
-  const travelReviews: TravelReviewData[] = [
-    {
-      id: 1,
-      title: "제주도 힐링 여행",
-      location: "제주도",
-      duration: "1박 2일",
-      views: "100",
-      likes: "1000",
-      tags: ["해변 액티비티", "맛집 총집합", "관광지"],
-      region: "제주",
-      image: "/src/assets/itinerary/jeju-healing.jpg",
-    },
-    {
-      id: 2,
-      title: "서울 도심 투어",
-      location: "서울",
-      duration: "2박 3일",
-      views: "250",
-      likes: "850",
-      tags: ["문화 체험", "쇼핑", "카페 투어"],
-      region: "서울",
-      image: "/src/assets/itinerary/seoul-tour.jpg",
-    },
-    {
-      id: 3,
-      title: "부산 바다 여행",
-      location: "부산",
-      duration: "2박 3일",
-      views: "180",
-      likes: "1200",
-      tags: ["해수욕장", "수산시장", "야경 명소"],
-      region: "부산",
-      image: "/src/assets/itinerary/busan-sea.jpg",
-    },
-    {
-      id: 4,
-      title: "강릉 동해안 여행",
-      location: "강릉",
-      duration: "1박 2일",
-      views: "90",
-      likes: "650",
-      tags: ["해변 드라이브", "커피 거리", "일출 명소"],
-      region: "강원",
-      image: "/src/assets/itinerary/gangneung-coast.jpg",
-    },
-    {
-      id: 5,
-      title: "경주 역사 탐방",
-      location: "경주",
-      duration: "2박 3일",
-      views: "120",
-      likes: "720",
-      tags: ["역사 유적", "문화재", "전통 체험"],
-      region: "경북",
-      image: "/src/assets/itinerary/gyeongju-history.jpg",
-    },
-    {
-      id: 6,
-      title: "전주 한옥마을",
-      location: "전주",
-      duration: "1박 2일",
-      views: "200",
-      likes: "950",
-      tags: ["한옥 체험", "전통 음식", "공예 체험"],
-      region: "전북",
-      image: "/src/assets/itinerary/jeonju-hanok.jpg",
-    },
-  ];
-
-  // ✅ 끊김 없는 루프용 복제 (서버 데이터 기반)
+  // 무한 슬라이더 아이템
   const slideItems = useMemo(() => {
     if (!chemiItemsState.length) return [];
     return [...chemiItemsState, ...chemiItemsState];
   }, [chemiItemsState]);
 
+  /* --------------------------- 서버: 피드 페이지네이션 --------------------------- */
+  const [page, setPage] = useState(0);
+  const [feedPage, setFeedPage] = useState<SpringPage<FeedResponse> | null>(null);
+  const [feedsLoading, setFeedsLoading] = useState(true);
+  const [feedsError, setFeedsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setFeedsLoading(true);
+        setFeedsError(null);
+        const res = await api.get<SpringPage<FeedResponse>>("/feed/all/paged", {
+          params: { page, size: 12 },
+        });
+        if (!mounted) return;
+        setFeedPage(res.data);
+      } catch (e) {
+        if (!mounted) return;
+        console.error("[TravelMainPage] /feed/all/paged 에러:", e);
+        setFeedPage({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          size: 12,
+          number: page,
+          first: page === 0,
+          last: true,
+        });
+        setFeedsError("피드를 불러오지 못했어요.");
+      } finally {
+        if (mounted) setFeedsLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [page]);
+
+  const feedCards: TravelReviewData[] = useMemo(() => {
+    const list = feedPage?.content ?? [];
+    return list.map<TravelReviewData>((f) => {
+      const tags = collectTopPlaceTitles(f.days);
+      const cover =
+        findFirstPlaceImage(f.days) ||
+        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=200&fit=crop";
+      return {
+        id: f.feed_id,
+        title: f.title,
+        location: f.slug,
+        duration: formatDuration(f.start_date, f.end_date),
+        views: String(f.view_count),
+        likes: String(f.like_count),
+        tags,
+        region: f.slug,
+        image: cover,
+      };
+    });
+  }, [feedPage]);
+
+  const onFeedCardClick = (review: TravelReviewData) => {
+    navigate(`/feed/${review.id}`);
+  };
+
   return (
     <div className="min-h-screen bg-white">
-      {/* ✅ 공통 헤더 적용 */}
-      <AppHeader activeMenu={currentPage} onMenuClick={handleHeaderMenuClick} />
+      <AppHeader activeMenu={activeMenu} />
 
       <main>
         {/* 히어로 섹션 */}
@@ -328,7 +353,6 @@ const TravelMainPage: React.FC = () => {
               여행 경로를 한번에.
             </h1>
             <p className="text-lg text-gray-600 mb-10">wego에서 나만의 여행 일정을 설계하고 공유하세요</p>
-            {/* 드롭다운에서 선택 시 팝업 오픈 */}
             <TravelPlanDropdown areas={travelAreas} onSelect={handleDropdownSelect} />
           </div>
         </section>
@@ -376,7 +400,6 @@ const TravelMainPage: React.FC = () => {
             </div>
 
             <div className="text-center">
-              {/* ✅ 버튼 클릭 시 /chemi/test 로 이동 */}
               <button
                 onClick={() => navigate("/chemi/test")}
                 className="bg-purple-500 hover:bg-purple-600 text-white px-10 py-4 rounded-full text-lg font-medium transition-colors"
@@ -407,101 +430,89 @@ const TravelMainPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-4 gap-6 mb-12">
-              {travelAreas.slice(0, 8).map((area) => (
+              {displayedAreas.map((area) => (
                 <TravelAreaCard key={area.id} area={area} onClick={handleAreaClick} />
               ))}
             </div>
 
             <div className="text-center">
-              <button onClick={handleMoreAreasClick} className="text-gray-600 hover:text-gray-800 text-lg font-medium transition-colors">
+              <button
+                onClick={handleMoreAreasClick}
+                className="text-gray-600 hover:text-gray-800 text-lg font-medium transition-colors"
+              >
                 + 더 많은 여행지 보기
               </button>
             </div>
           </div>
         </section>
 
-        {/* 인기 일정 섹션 */}
+        {/* 인기 일정 섹션 - 서버 페이지네이션 */}
         <section className="py-20 px-4 bg_white">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900">유저들의 인기 추천 여행일정</h2>
+            <div className="text-center mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900">피드</h2>
+              <p className="text-gray-600 mt-3">좋아요/조회수 순으로 정렬된 인기 피드가 보여요</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
-              {[
-                {
-                  id: 1,
-                  title: "제주도 힐링 여행",
-                  location: "제주도",
-                  duration: "1박 2일",
-                  views: "100",
-                  likes: "1000",
-                  tags: ["해변 액티비티", "맛집 총집합", "관광지"],
-                  region: "제주",
-                  image: "/src/assets/itinerary/jeju-healing.jpg",
-                },
-                {
-                  id: 2,
-                  title: "서울 도심 투어",
-                  location: "서울",
-                  duration: "2박 3일",
-                  views: "250",
-                  likes: "850",
-                  tags: ["문화 체험", "쇼핑", "카페 투어"],
-                  region: "서울",
-                  image: "/src/assets/itinerary/seoul-tour.jpg",
-                },
-                {
-                  id: 3,
-                  title: "부산 바다 여행",
-                  location: "부산",
-                  duration: "2박 3일",
-                  views: "180",
-                  likes: "1200",
-                  tags: ["해수욕장", "수산시장", "야경 명소"],
-                  region: "부산",
-                  image: "/src/assets/itinerary/busan-sea.jpg",
-                },
-                {
-                  id: 4,
-                  title: "강릉 동해안 여행",
-                  location: "강릉",
-                  duration: "1박 2일",
-                  views: "90",
-                  likes: "650",
-                  tags: ["해변 드라이브", "커피 거리", "일출 명소"],
-                  region: "강원",
-                  image: "/src/assets/itinerary/gangneung-coast.jpg",
-                },
-                {
-                  id: 5,
-                  title: "경주 역사 탐방",
-                  location: "경주",
-                  duration: "2박 3일",
-                  views: "120",
-                  likes: "720",
-                  tags: ["역사 유적", "문화재", "전통 체험"],
-                  region: "경북",
-                  image: "/src/assets/itinerary/gyeongju-history.jpg",
-                },
-                {
-                  id: 6,
-                  title: "전주 한옥마을",
-                  location: "전주",
-                  duration: "1박 2일",
-                  views: "200",
-                  likes: "950",
-                  tags: ["한옥 체험", "전통 음식", "공예 체험"],
-                  region: "전북",
-                  image: "/src/assets/itinerary/jeonju-hanok.jpg",
-                },
-              ].map((review) => (
-                <TravelReviewCard key={review.id} review={review} onClick={(r) => console.log(`${r.title} 리뷰 클릭됨`)} />
-              ))}
-            </div>
+            <div className="min-h-[200px]">
+              {feedsLoading && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
+                  ))}
+                </div>
+              )}
 
-            <div className="text-center">
-              <button className="text-gray-600 hover:text-gray-800 text-lg font-medium transition-colors">+ 더 많은 일정 보기</button>
+              {!feedsLoading && feedsError && (
+                <div className="text-center text-red-500 py-10">{feedsError}</div>
+              )}
+
+              {!feedsLoading && !feedsError && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
+                    {feedCards.length > 0 ? (
+                      feedCards.map((review) => (
+                        <TravelReviewCard key={review.id} review={review} onClick={onFeedCardClick} />
+                      ))
+                    ) : (
+                      <div className="col-span-3 text-center text-gray-500 py-12">아직 등록된 피드가 없어요.</div>
+                    )}
+                  </div>
+
+                  {/* 페이지네이션 */}
+                  {feedPage && feedPage.totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-3 mb-6">
+                      <button
+                        className="px-4 py-2 rounded-lg border text-sm disabled:opacity-40"
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        disabled={feedPage.first}
+                      >
+                        이전
+                      </button>
+                      <span className="text-sm text-gray-600">
+                        {feedPage.number + 1} / {feedPage.totalPages}
+                      </span>
+                      <button
+                        className="px-4 py-2 rounded-lg border text-sm disabled:opacity-40"
+                        onClick={() => setPage((p) => (feedPage.last ? p : p + 1))}
+                        disabled={feedPage.last}
+                      >
+                        다음
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 더 많은 피드 보기 */}
+                  <div className="text-center">
+                    <button
+                      onClick={() => navigate("/feed")}
+                      className="text-gray-600 hover:text-gray-800 text-lg font-medium transition-colors"
+                    >
+                      + 더 많은 피드 보기
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -510,7 +521,11 @@ const TravelMainPage: React.FC = () => {
       </main>
 
       {/* DestinationPopup */}
-      <DestinationPopup isOpen={isPopupOpen} onClose={handlePopupClose} destination={selectedDestination} />
+      <DestinationPopup
+        isOpen={isPopupOpen}
+        onClose={handlePopupClose}
+        destination={selectedDestination}
+      />
     </div>
   );
 };

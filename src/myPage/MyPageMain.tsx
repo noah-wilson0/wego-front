@@ -3,10 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import { MapPin, Heart, Eye, Plus } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import AppHeader from '../../components/AppHeader';
+import AppHeader from '../components/header/AppHeader';
 import MyPageSideBar from './components/MyPageSideBar';
 import TravelPlanItem from './components/TravelPlanItem';
 import type { TravelPlanData } from './components/TravelPlanItem';
+
+// ✅ 서버 Feed 타입 재사용
+import type { FeedResponse } from '../data/feed';
 
 /* ------------------------ Axios 인스턴스 (쿠키 포함) ------------------------ */
 const api = axios.create({
@@ -186,6 +189,46 @@ function calcDDay(startDateISO: string): string {
   return `D+${Math.abs(diff)}`;
 }
 
+/* ----------------------------- 리뷰 유틸 ----------------------------- */
+// 날짜 차이(일수)
+const diffDays = (startISO?: string, endISO?: string) => {
+  if (!startISO || !endISO) return 0;
+  const s = new Date(startISO);
+  const e = new Date(endISO);
+  const ms = e.getTime() - s.getTime();
+  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
+};
+const formatDuration = (startISO?: string, endISO?: string) => {
+  const days = diffDays(startISO, endISO);
+  return days > 0 ? `${days}일` : '';
+};
+
+// PlaceItem.title 3개까지 수집(모자라면 다음 날로 이어서)
+const collectTopPlaceTitles = (days: FeedResponse['days'] | undefined): string[] => {
+  const titles: string[] = [];
+  if (!days) return titles;
+  for (const d of days) {
+    const places = d?.places ?? [];
+    for (const p of places) {
+      if (p?.title) {
+        titles.push(p.title);
+        if (titles.length === 3) return titles;
+      }
+    }
+  }
+  return titles;
+};
+
+// 첫 번째 place 이미지 찾기
+const findFirstPlaceImage = (days: FeedResponse['days'] | undefined): string | undefined => {
+  if (!days) return;
+  for (const d of days) {
+    const first = d?.places?.[0];
+    if (first?.image) return first.image;
+  }
+  return;
+};
+
 /* ------------------------------- 페이지 ------------------------------- */
 const MyPageMain: React.FC = () => {
   const navigate = useNavigate();
@@ -197,7 +240,7 @@ const MyPageMain: React.FC = () => {
   const activeMenu = useMemo(() => {
     if (location.pathname.startsWith('/mypage/profile')) return 'profile';
     if (location.pathname.startsWith('/mypage/chemi')) return 'chemi';
-    if (location.pathname.startsWith('/mypage/review')) return 'review';
+    if (location.pathname.startsWith('/mypage/feed')) return 'review';
     if (location.pathname.startsWith('/mypage/itinerary')) return 'itinerary';
     return 'home';
   }, [location.pathname]);
@@ -214,7 +257,7 @@ const MyPageMain: React.FC = () => {
         navigate('/mypage/chemi');
         break;
       case 'review':
-        navigate('/mypage/review');
+        navigate('/mypage/feed');
         break;
       case 'itinerary':
         navigate('/mypage/itinerary');
@@ -242,7 +285,7 @@ const MyPageMain: React.FC = () => {
 
     (async () => {
       try {
-        // 1) ✅ 인증 확인 + 이름 가져오기 (서버가 문자열만 반환)
+        // 1) ✅ 인증 확인 + 이름 가져오기
         let nameStr = '';
         try {
           const meRes = await api.get<string>('/auth/me', { responseType: 'text' });
@@ -283,7 +326,6 @@ const MyPageMain: React.FC = () => {
   const [planError, setPlanError] = useState<string | null>(null);
   const [serverPlans, setServerPlans] = useState<ServerTravelPlanDto[]>([]);
 
-  // 👉 단일/배열/중첩 모든 경우를 배열로 정규화
   const isPlan = (x: any): x is ServerTravelPlanDto =>
     x && typeof x === 'object' &&
     typeof x.slug === 'string' &&
@@ -308,8 +350,6 @@ const MyPageMain: React.FC = () => {
         setPlanError(null);
 
         const res = await api.get<any>('/profile/travel-plans');
-        console.log('[travel-plans raw]', res.data);
-
         if (!mounted) return;
 
         const list = normalizePlans(res.data);
@@ -328,7 +368,7 @@ const MyPageMain: React.FC = () => {
   }, []);
 
   const viewPlans: TravelPlanData[] = useMemo(() => {
-    return (Array.isArray(serverPlans) ? serverPlans : []).map((p, idx) => ({
+    return (Array.isArray(serverPlans) ? serverPlans : []).map((p) => ({
       id: p.id,
       title: p.title,
       destination: p.slug,
@@ -341,31 +381,59 @@ const MyPageMain: React.FC = () => {
     }));
   }, [serverPlans]);
 
-  /* ------------------------------ 목업 리뷰 데이터(유지) ------------------------------ */
-  const mockReviews: TravelReviewData[] = [
-    {
-      id: 1,
-      title: "해무도 넘어 바라지",
-      location: "속초",
-      duration: "5시간",
-      views: "100",
-      likes: "1000",
-      tags: ["바로 물놀이하기", "해변 액티비티", "일몰 명소"],
-      region: "공유",
-      image: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=300&h=200&fit=crop"
-    },
-    {
-      id: 2,
-      title: "해무도 넘어 바라지",
-      location: "속초",
-      duration: "5시간", 
-      views: "100",
-      likes: "1000",
-      tags: ["바로 물놀이하기", "해변 액티비티", "일몰 명소"],
-      region: "공유",
-      image: "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=300&h=200&fit=crop"
-    }
-  ];
+  /* ------------------------------ ✅ 내 피드 목록 (서버) ------------------------------ */
+  const [feeds, setFeeds] = useState<FeedResponse[] | null>(null);
+  const [feedLoading, setFeedLoading] = useState<boolean>(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setFeedLoading(true);
+        setFeedError(null);
+        const res = await api.get<FeedResponse[]>('/members/feed');
+        if (!mounted) return;
+        setFeeds(Array.isArray(res.data) ? res.data : []);
+      } catch {
+        setFeedError('내 피드를 불러오지 못했어요.');
+        setFeeds([]);
+      } finally {
+        if (mounted) setFeedLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const reviewCards: TravelReviewData[] = useMemo(() => {
+    if (!feeds) return [];
+    return [...feeds].sort((a, b) => {
+      // 최신 생성일 우선
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      return tb - ta;
+    }).map<TravelReviewData>((f) => {
+      const tags = collectTopPlaceTitles(f.days);
+      const cover = findFirstPlaceImage(f.days) ||
+        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=200&fit=crop';
+      return {
+        id: f.feed_id,
+        title: f.title,
+        location: f.slug,
+        duration: formatDuration(f.start_date, f.end_date),
+        views: String(f.view_count),
+        likes: String(f.like_count),
+        tags,
+        region: f.slug,
+        image: cover,
+      };
+    });
+  }, [feeds]);
+
+  const handleReviewClick = (review: TravelReviewData) => {
+    // 상세 페이지로 이동
+    navigate(`/feed/${review.id}`);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -503,22 +571,48 @@ const MyPageMain: React.FC = () => {
                 <h2 className="text-xl font-bold">리뷰</h2>
               </div>
               <div className="p-6">
-                {/* 목업 유지 */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  {mockReviews.map((review) => (
-                    <TravelReviewCard
-                      key={review.id}
-                      review={review}
-                      onClick={(r) => console.log(`${r.title} 클릭됨`)}
-                    />
-                  ))}
-                </div>
-                <div className="text-center py-4">
-                  <button className="text-blue-500 text-sm flex items-center mx-auto hover:text-blue-600 transition-colors">
-                    <Plus className="w-4 h-4 mr-1" />
-                    전체 리뷰 보기
-                  </button>
-                </div>
+                {feedLoading && (
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-60 bg-gray-100 rounded-2xl animate-pulse" />
+                    ))}
+                  </div>
+                )}
+
+                {!feedLoading && feedError && (
+                  <div className="text-center text-red-500 py-6">{feedError}</div>
+                )}
+
+                {!feedLoading && !feedError && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      {reviewCards.length > 0 ? (
+                        reviewCards.map((review) => (
+                          <TravelReviewCard
+                            key={review.id}
+                            review={review}
+                            onClick={handleReviewClick}
+                          />
+                        ))
+                      ) : (
+                        <div className="col-span-2 text-center text-gray-500 py-10">
+                          작성한 리뷰가 없어요.
+                        </div>
+                      )}
+                    </div>
+                    {reviewCards.length > 0 && (
+                      <div className="text-center py-4">
+                        <button
+                          className="text-blue-500 text-sm flex items-center mx-auto hover:text-blue-600 transition-colors"
+                          onClick={() => navigate('/mypage/feed')}
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          전체 리뷰 보기
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </section>

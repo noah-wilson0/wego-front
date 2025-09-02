@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import AppHeader from '../../components/AppHeader';
+import AppHeader from '../components/header/AppHeader';
 import LocalProfileSettings from './LocalProfileSettings';
 
 import SnsProfileSettings from './SnsProfileSettings';

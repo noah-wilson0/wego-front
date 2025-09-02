@@ -8,6 +8,37 @@ import axios from 'axios';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 
 /* ===========================================================
+ * 📌 토큰 접근 시 처리
+ * - /check/t/:token → 서버에 GET /travel_plan/share/{token} 요청
+ * - 서버가 TravelPlanResponse 반환 → travelData 상태에 반영
+ * - 내부적으로 planId를 못 받아오면 저장 버튼 비활성화
+ *
+ * 📌 현재 화면 확인
+ * - 주인(/check/:id)과 공유자(/check/t/:token) 모두 화면 렌더링 성공
+ * - 두 경우 모두 타임라인 / 지도 패널 정상 표시됨 (스크린샷 확인 완료)
+ * - 편집 버튼까지 동일하게 표시됨
+ *
+ * 📌 현재 발견된 차이 (버튼 상태)
+ * - 편집 버튼 누르기 전
+ *   · 주인과 공유자 화면이 완전히 동일
+ *   · "편집" 버튼 활성화됨
+ *   · "저장" 버튼은 기본적으로 비활성화
+ *
+ * - 편집 버튼 누른 후
+ *   · 주인 모드: 저장 버튼이 비활성화(회색) → 편집 중에 데이터가 수정되면 활성화됨
+ *   · 공유자 모드: 저장 버튼이 바로 빨간색(활성화된 상태)
+ *   → 저장 버튼 색상 차이로 UI 상 주인/공유자 구분 가능
+ *
+ * 📌 이후 계획 (메모)
+ * - 현재는 화면 정상 렌더링 확인 완료 ✅
+ * - 저장/편집 로직은 "실시간 협업 기능" 구현 단계에서 처리 예정 → 지금은 중단
+ * - UI 메모:
+ *   · 주인 vs 공유자 차이는 현재 "저장 버튼 활성화 여부"뿐
+ *   · 협업 기능 구현 시 다시 정리 필요
+ * =========================================================== */
+
+
+/* ===========================================================
  * axios 인스턴스 (쿠키 자동 포함)
  * =========================================================== */
 const api = axios.create({
@@ -28,7 +59,6 @@ const logAxiosError = (err: unknown, label: string) => {
 
 /* ===========================================================
  * 레이아웃
- * - 저장/편집 버튼을 외부 상태로 제어할 수 있도록 canSave/isEditing 추가
  * =========================================================== */
 interface FullCheckColumnLayoutProps {
   children: React.ReactNode;
@@ -46,9 +76,8 @@ interface FullCheckColumnLayoutProps {
   onSave?: () => void;
   isEditing?: boolean;
   canSave?: boolean;
-  editDisabled?: boolean; // 생성 모드에서는 편집 버튼 비활성화
+  editDisabled?: boolean;
 }
-
 const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   children,
   settlementContent,
@@ -116,9 +145,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           <button
             disabled={!canSave}
             className={`py-2 px-4 rounded-md text-base transition-colors ${
-              canSave
-                ? 'bg-red-500 text-white hover:bg-red-600'
-                : 'bg-red-100 text-red-300 cursor-not-allowed'
+              canSave ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-red-100 text-red-300 cursor-not-allowed'
             }`}
             onClick={onSave}
           >
@@ -128,11 +155,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
       </aside>
 
       {/* 가운데 본문 */}
-      <div
-        className={`${
-          isMainPanelOpen ? 'w-[65%]' : 'w-[35%]'
-        } transition-all duration-300 p-4 h-full flex flex-col relative`}
-      >
+      <div className={`${isMainPanelOpen ? 'w-[65%]' : 'w-[35%]'} transition-all duration-300 p-4 h-full flex flex-col relative`}>
         <button
           onClick={() => setIsMainPanelOpen(!isMainPanelOpen)}
           className="absolute top-1/2 right-0 transform -translate-y-1/2 translate-x-1/2 bg-white border border-gray-300 w-6 h-20 flex items-center justify-center shadow-lg hover:bg-gray-50 rounded-lg z-50"
@@ -156,7 +179,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
 
       {/* 오른쪽: 지도/정산 */}
       <div className={`${isMainPanelOpen ? 'flex-1' : 'w-[65%]'} transition-all duration-300 relative flex flex-col`}>
-        <div className={`${isSettlementPanelOpen ? 'h-1/2' : 'flex-1'} bg-gray-200 p-4 transition-all duration-300`}>
+        <div className={`${true ? 'h-1/2' : 'flex-1'} bg-gray-200 p-4 transition-all duration-300`}>
           <div className="h-full bg-white rounded shadow-sm">
             {mapContent || (
               <div className="h-full flex flex-col items-center justify-center">
@@ -167,32 +190,13 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           </div>
         </div>
 
-        <div className={`${isSettlementPanelOpen ? 'h-1/2' : 'h-8'} bg-white border-t transition-all duration-300 relative flex-shrink-0`}>
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
-            <button
-              onClick={() => setIsSettlementPanelOpen(!isSettlementPanelOpen)}
-              className="bg-white border border-gray-300 w-20 h-6 flex items-center justify-center shadow-lg hover:bg-gray-50 rounded-lg"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-gray-400">
-                <path
-                  d={isSettlementPanelOpen ? 'M6 9L12 15L18 9' : 'M18 15L12 9L6 15'}
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          {isSettlementPanelOpen && (
-            <div className="p-4 h-full pt-8 overflow-auto">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold">정산하기</h2>
-              </div>
-              <div className="h-full">{settlementContent || <div className="text-gray-500 text-center py-8">정산 내역이 없습니다.</div>}</div>
+        <div className={`h-1/2 bg-white border-t transition-all duration-300 relative flex-shrink-0`}>
+          <div className="p-4 h-full pt-8 overflow-auto">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">정산하기</h2>
             </div>
-          )}
+            <div className="h-full">{/* 정산 패널 자리 */}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -267,7 +271,10 @@ const TravelPlanCheck: React.FC = () => {
   const location = useLocation();
   const { travelPlanId } = useParams<{ travelPlanId?: string }>();
 
-  // URL 파라미터가 있으면 수정 모드, 없으면 생성 모드
+  // 토큰 파라미터 — /check/t/:token
+  const { token } = useParams<{ token?: string }>();
+
+  // URL에 planId 있으면 edit, 아니면 create
   const mode: Mode = travelPlanId ? 'edit' : 'create';
 
   const [activeStep, setActiveStep] = useState(3);
@@ -276,11 +283,14 @@ const TravelPlanCheck: React.FC = () => {
   const [travelData, setTravelData] = useState<TravelData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 수정/저장 제어 (수정 모드: 처음 저장 비활성)
+  // [ADD] 공유 링크로 들어온 경우 PUT에 쓸 planId를 따로 보관
+  const [sharePlanId, setSharePlanId] = useState<string | null>(null);
+  const shareMode = !!token || !!sharePlanId;
+
+  // 버튼 상태
   const [isEditing, setIsEditing] = useState(mode === 'create'); // 생성 모드면 true로 시작
   const [isDirty, setIsDirty] = useState(mode === 'create');     // 생성 모드면 true로 시작
 
-  // 저장 성공 모달
   const [showSavedModal, setShowSavedModal] = useState(false);
 
   // 데모용 정산 리스트
@@ -291,7 +301,50 @@ const TravelPlanCheck: React.FC = () => {
   ]);
 
   /* -------------------------------------------
-   * 데이터 로드
+   * [ADD] 토큰 진입: /travel_plan/share/{token}
+   *  - 보기 + 편집/저장까지 가능하도록 planId도 함께 보관
+   *  - 백엔드가 travel_plan_id 또는 travelPlanId를 내려준다고 가정
+   * ------------------------------------------ */
+  useEffect(() => {
+    if (!token) return;
+
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/travel_plan/share/${token}`, { withCredentials: true });
+        const body: any = res.data;
+        setTravelData(body as TravelData);
+
+        // 응답에서 planId 후보 키 모두 시도
+        const pid =
+          body?.travel_plan_id ??
+          body?.travelPlanId ??
+          body?.planId ??
+          body?.id ??
+          null;
+
+        if (!pid) {
+          // planId가 없으면 저장 버튼은 동작할 수 없으므로 안내만 띄우고 보기 모드 유지
+          console.warn('[share] planId not found in TravelPlanResponse. Save will be disabled.');
+        } else {
+          setSharePlanId(String(pid));
+        }
+
+        // 공유 링크에서도 편집/저장 버튼 UI는 주인과 동일하게 보이도록
+        setIsEditing(false);
+        setIsDirty(false);
+      } catch (err) {
+        logAxiosError(err, 'GET /travel_plan/share/{token} FAIL');
+        alert('유효하지 않은 공유 링크거나 만료되었습니다.');
+        navigate('/', { replace: true });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token, navigate]);
+
+  /* -------------------------------------------
+   * 기존 데이터 로드 (토큰 진입이 아닐 때만)
    *  - edit  : GET /travel_plan/member/schedule/{travelPlanId}
    *  - create: GET /travel_plan/temp/schedule/{uuid}
    * ------------------------------------------ */
@@ -307,7 +360,6 @@ const TravelPlanCheck: React.FC = () => {
       }
     }
 
-    // create 모드
     const uuid = Cookies.get('travelPlanUUID');
     if (!uuid) {
       console.error('[fetchTravelData] travelPlanUUID 쿠키가 없습니다.');
@@ -323,6 +375,9 @@ const TravelPlanCheck: React.FC = () => {
   }, [mode, travelPlanId]);
 
   useEffect(() => {
+    // 토큰으로 이미 travelData를 세팅했다면 기존 로딩 루틴은 건너뜀
+    if (token) return;
+
     (async () => {
       try {
         setLoading(true);
@@ -330,7 +385,6 @@ const TravelPlanCheck: React.FC = () => {
         setTravelData(data);
       } catch (e: any) {
         if (e?.message === 'MISSING_UUID') {
-          // 생성 플로우인데 임시 UUID가 없으면 홈으로
           navigate('/', { replace: true });
         } else {
           alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
@@ -339,17 +393,16 @@ const TravelPlanCheck: React.FC = () => {
         setLoading(false);
       }
     })();
-  }, [fetchTravelData, navigate]);
+  }, [token, fetchTravelData, navigate]);
 
-  /* 편집 토글 (수정 모드에서만 의미 있음) */
+  /* 편집 토글 */
   const handleEdit = () => {
-    if (mode === 'edit') {
-      setIsEditing((v) => !v);
-      if (!isEditing) setIsDirty(false); // 편집 시작 시 변경 없음으로 초기화
-    }
+    // 토큰 모드도 주인과 동일하게 토글
+    setIsEditing((v) => !v);
+    if (!isEditing) setIsDirty(false);
   };
 
-  /* 변경 발생 표시(예: 어떤 입력 변경 핸들러에서 호출) */
+  /* 변경 발생 표시 */
   const markDirty = () => {
     if (!isEditing) return;
     setIsDirty(true);
@@ -358,23 +411,26 @@ const TravelPlanCheck: React.FC = () => {
   /* -------------------------------------------
    * 저장
    *  - create: POST /travel_plan/schedule/{uuid}
-   *  - edit  : PUT  /travel_plan/schedule/{travelPlanId} (body: travelData)
+   *  - edit  : PUT  /travel_plan/schedule/{id} (id = travelPlanId | sharePlanId)
+   *  - 토큰 모드: /auth/me 체크 생략
    * ------------------------------------------ */
   const handleSave = async () => {
     if (!travelData) return;
 
-    // 로그인 확인
-    try {
-      await api.get('/auth/me');
-    } catch (err) {
-      logAxiosError(err, 'auth/me FAIL → redirect to login');
-      const redirect = encodeURIComponent(location.pathname + location.search);
-      navigate(`/login?redirect=${redirect}`);
-      return;
+    // 토큰 모드가 아니면 로그인 확인
+    if (!shareMode) {
+      try {
+        await api.get('/auth/me');
+      } catch (err) {
+        logAxiosError(err, 'auth/me FAIL → redirect to login');
+        const redirect = encodeURIComponent(location.pathname + location.search);
+        navigate(`/login?redirect=${redirect}`);
+        return;
+      }
     }
 
     try {
-      if (mode === 'create') {
+      if (mode === 'create' && !shareMode) {
         const uuid = Cookies.get('travelPlanUUID');
         if (!uuid) {
           alert('임시 여행 일정 정보(UUID)가 없습니다.');
@@ -388,8 +444,13 @@ const TravelPlanCheck: React.FC = () => {
           alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
         }
       } else {
-        if (!travelPlanId) return;
-        const res = await api.put(`/travel_plan/schedule/${travelPlanId}`, travelData);
+        // 편집(주인) 또는 공유모드(동행자)
+        const id = travelPlanId ?? sharePlanId;
+        if (!id) {
+          alert('저장 정보를 찾을 수 없습니다.(planId 누락)');
+          return;
+        }
+        const res = await api.put(`/travel_plan/schedule/${id}`, travelData);
         if (res.status === 200) {
           setIsDirty(false);
           setIsEditing(false);
@@ -464,9 +525,9 @@ const TravelPlanCheck: React.FC = () => {
 
   const filteredSchedules = selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
 
-  /* 저장 버튼 활성화 조건 */
-  const canSave = mode === 'create' ? true : (isEditing && isDirty);
-  const editDisabled = mode === 'create'; // 생성 모드에서는 '편집' 비활성
+  /* 저장 버튼 활성화 조건 — 주인/동행자 공통 */
+  const canSave = isEditing && (mode === 'create' ? true : isDirty);
+  const editDisabled = false; // 공유 링크(동행자)도 편집 가능하게
 
   if (loading) {
     return (
@@ -502,7 +563,6 @@ const TravelPlanCheck: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h1 className="text-4xl font-bold">LOGO</h1>
-            {/* 목적지 표시는 샘플 */}
             <span className="text-lg text-gray-500">제주</span>
           </div>
         </div>
@@ -556,7 +616,7 @@ const TravelPlanCheck: React.FC = () => {
                             <img src={place.image} alt={place.title} className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0" />
                           </div>
                         </div>
-                        {/* 예시: 이 카드에서 뭔가 수정하면 markDirty() 호출 */}
+                        {/* 편집 시 변경이 생기면 markDirty()를 호출해야 저장 버튼 활성화 */}
                         {/* {isEditing && <button onClick={markDirty}>이 카드 수정됨 표시</button>} */}
                       </div>
                     </div>
@@ -629,7 +689,7 @@ const TravelPlanCheck: React.FC = () => {
         onSave={handleSave}
         isEditing={isEditing}
         canSave={canSave}
-        editDisabled={editDisabled}
+        editDisabled={false} // 동행자도 동일 UI
         onNext={() => setActiveStep(activeStep + 1)}
       >
         {mainContent}
@@ -641,11 +701,10 @@ const TravelPlanCheck: React.FC = () => {
         onClose={() => setShowSavedModal(false)}
         onConfirm={() => {
           setShowSavedModal(false);
-          if (mode === 'create') {
+          if (mode === 'create' && !shareMode) {
             navigate('/mypage');
           } else {
-            // 수정 모드에선 현재 페이지 유지 or 마이페이지로 이동 등 정책에 맞게
-            // navigate('/mypage');
+            // 편집/공유 모드에선 현재 페이지 유지
           }
         }}
       />

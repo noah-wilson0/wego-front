@@ -2,9 +2,9 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
-import AppHeader from '../../components/AppHeader';
-import MyPageSideBar from './components/MyPageSideBar';
-import ChemiCard from '../components/ChemiCard';
+import AppHeader from '../components/header/AppHeader';
+import MyPageSideBar from '../myPage/components/MyPageSideBar';
+import ChemiCard from '../main/components/ChemiCard';
 
 // 케미 데이터 타입 (기존 그대로 사용)
 interface ChemiData {
@@ -36,7 +36,7 @@ const MyPageChemi: React.FC = () => {
   const activeMenu = useMemo(() => {
     if (location.pathname.startsWith('/mypage/profile')) return 'profile';
     if (location.pathname.startsWith('/mypage/chemi')) return 'chemi';
-    if (location.pathname.startsWith('/mypage/review')) return 'review';
+    if (location.pathname.startsWith('/mypage/feed')) return 'review';
     if (location.pathname.startsWith('/mypage/itinerary')) return 'itinerary';
     return 'home';
   }, [location.pathname]);
@@ -52,7 +52,7 @@ const MyPageChemi: React.FC = () => {
       case 'chemi':
         navigate('/mypage/chemi'); break;
       case 'review':
-        navigate('/mypage/review'); break;
+        navigate('/mypage/feed'); break;
       case 'itinerary':
         navigate('/mypage/itinerary'); break;
       default:

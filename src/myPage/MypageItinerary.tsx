@@ -4,10 +4,10 @@ import { ChevronDown } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-import AppHeader from '../../components/AppHeader';
-import MyPageSideBar from './components/MyPageSideBar';
-import TravelPlanItem from './components/TravelPlanItem';
-import type { TravelPlanData } from './components/TravelPlanItem';
+import AppHeader from '../components/header/AppHeader';
+import MyPageSideBar from '../myPage/components/MyPageSideBar';
+import TravelPlanItem from '../myPage/components/TravelPlanItem';
+import type { TravelPlanData } from '../myPage/components/TravelPlanItem';
 
 // ✅ 서버 응답 DTO 타입 (백엔드 TravelPlanDto와 동일)
 type ServerTravelPlanDto = {
@@ -56,7 +56,7 @@ const MyPageItinerary: React.FC = () => {
   const activeMenu = useMemo(() => {
     if (location.pathname.startsWith('/mypage/profile')) return 'profile';
     if (location.pathname.startsWith('/mypage/chemi')) return 'chemi';
-    if (location.pathname.startsWith('/mypage/review')) return 'review';
+    if (location.pathname.startsWith('/mypage/feed')) return 'review';
     if (location.pathname.startsWith('/mypage/itinerary')) return 'itinerary';
     return 'home';
   }, [location.pathname]);
@@ -77,7 +77,7 @@ const MyPageItinerary: React.FC = () => {
         navigate('/mypage/chemi');
         break;
       case 'review':
-        navigate('/mypage/review');
+        navigate('/mypage/feed');
         break;
       case 'itinerary':
         navigate('/mypage/itinerary');
