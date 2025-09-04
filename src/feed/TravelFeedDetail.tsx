@@ -8,16 +8,18 @@ import FeedComments from "./components/FeedComments";
 import type { FeedResponse, DaySchedule, RouteInfo, RouteDetail } from "../data/feed";
 import axios from "axios";
 
-/* ---------- 기간(n일) 표기 ---------- */
+/* ---------- 기간 계산 ---------- */
 const diffDays = (startISO?: string, endISO?: string) => {
   if (!startISO || !endISO) return 0;
   const s = new Date(startISO);
   const e = new Date(endISO);
   return Math.max(0, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 };
-const formatDuration = (startISO?: string, endISO?: string) => {
+const formatNightsDays = (startISO?: string, endISO?: string) => {
   const days = diffDays(startISO, endISO);
-  return days > 0 ? `${days}일` : "";
+  if (days <= 0) return "";
+  const nights = Math.max(0, days - 1);
+  return `${nights}박 ${days}일`;
 };
 
 /* ---------- 특정 날짜에 해당하는 RouteInfo 찾기 ---------- */
@@ -51,6 +53,57 @@ function buildFeedPlacesForDay(day: DaySchedule, routeInfo?: RouteInfo): FeedPla
   }
   return items;
 }
+
+/* ============ 케미 태그 UI(가로 스크롤, 절제된 톤) ============ */
+type ChemiItem = NonNullable<FeedResponse["chemis"]>[number];
+
+const ChemiChip: React.FC<{ item: ChemiItem }> = ({ item }) => {
+  return (
+    <span
+      title={item.description || item.name}
+      className="
+        inline-flex items-center gap-2
+        bg-gray-100 border border-gray-200 text-[12px] font-medium text-gray-700
+        px-3 py-1.5 rounded-full shadow-sm
+        hover:bg-gray-200 transition-colors
+        whitespace-nowrap
+      "
+    >
+      {item.image ? (
+        <img
+          src={item.image}
+          alt={item.name}
+          className="w-5 h-5 rounded-full object-cover"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
+        />
+      ) : (
+        <span className="w-5 h-5 rounded-full bg-gray-300 inline-block" />
+      )}
+      <span>{item.name}</span>
+    </span>
+  );
+};
+
+const ChemiTagBar: React.FC<{ items?: ChemiItem[] }> = ({ items }) => {
+  if (!items || items.length === 0) return null;
+  return (
+    <div
+      className="
+        mt-4 -mx-1 px-1
+        overflow-x-auto
+        [scrollbar-width:none] [-ms-overflow-style:none]
+        [&::-webkit-scrollbar]:hidden
+      "
+    >
+      <div className="flex items-center gap-2.5 pr-2">
+        {items.map((c) => (
+          <ChemiChip key={c.id} item={c} />
+        ))}
+      </div>
+    </div>
+  );
+};
+/* ============================================================ */
 
 const TravelFeedDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -128,7 +181,7 @@ const TravelFeedDetail: React.FC = () => {
     );
   }
 
-  const durationLabel = formatDuration(resp.start_date, resp.end_date);
+  const durationND = formatNightsDays(resp.start_date, resp.end_date);
   const firstDay = resp.days?.[0];
   const firstDayRouteInfo = firstDay ? findRouteInfoForDate(resp.routes, firstDay.date) : undefined;
   const firstDayPlaces: FeedPlace[] = firstDay ? buildFeedPlacesForDay(firstDay, firstDayRouteInfo) : [];
@@ -139,33 +192,47 @@ const TravelFeedDetail: React.FC = () => {
       {header}
       <main className="pt-[64px]">
         <div className="px-4 lg:px-8 py-10">
-          {/* ===== 상단 본문 ===== */}
+          {/* ===== 상단(블로그 스타일 헤더) ===== */}
           <section className={`${W_70} mx-auto`}>
-            {/* 제목 + slug|기간 */}
-            <div className="flex items-center flex-wrap gap-3">
-              <h1 className="text-2xl lg:text-3xl font-bold">{resp.title}</h1>
-              <span className="text-sm text-gray-500">
-                {resp.slug}
-                {durationLabel && ` | ${durationLabel}`}
-              </span>
+            {/* 여행 지역 (slug) */}
+            {resp.slug && (
+              <div className="mb-2">
+                <span className="text-sm text-gray-500 font-medium">{resp.slug}</span>
+              </div>
+            )}
+
+            {/* 1) 제목(좌) — 작성일(우) */}
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-gray-900">
+                {resp.title}
+              </h1>
+              {resp.created_at && (
+                <time className="text-xs md:text-sm text-gray-400 mt-1">{resp.created_at}</time>
+              )}
             </div>
 
-            {/* 메타(작성자 / 조회·좋아요·액션) */}
-            <div className="mt-4 flex items-center justify-between text-sm">
-              <div className="text-gray-600">
+            {/* 2) 메타 줄: 작성자 · n박n일 | 액션 아이콘 */}
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-2 text-sm text-gray-500">
+                {/* 작성자명 (이미지 제거) */}
                 <span className="font-medium text-gray-700">{resp.author}</span>
-                {resp.created_at && (
-                  <span className="ml-2 text-xs text-gray-400">{resp.created_at}</span>
+
+                {/* 구분점 */}
+                {durationND && (
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <span>{durationND}</span>
+                  </>
                 )}
               </div>
-              <div className="flex items-center gap-5 text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Eye size={16} />
-                  {resp.view_count}
+
+              {/* 아이콘 액션 */}
+              <div className="flex items-center gap-4 text-gray-500">
+                <span className="inline-flex items-center gap-1">
+                  <Eye size={16} /> {resp.view_count}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Heart size={16} className="text-red-500" />
-                  {resp.like_count}
+                <span className="inline-flex items-center gap-1">
+                  <Heart size={16} className="text-red-500" /> {resp.like_count}
                 </span>
                 <button className="hover:text-gray-700 transition-colors" aria-label="북마크">
                   <Bookmark size={16} />
@@ -176,9 +243,18 @@ const TravelFeedDetail: React.FC = () => {
               </div>
             </div>
 
-            {/* 커버 이미지 */}
+            {/* 3) 케미 태그 */}
+            <ChemiTagBar items={resp.chemis} />
+
+            {/* 4) 구분선 */}
+            <div className="mt-6 border-b border-gray-200" />
+          </section>
+
+
+          {/* ===== 커버 이미지 ===== */}
+          <section className={`${W_70} mx-auto`}>
             <figure className="mt-6">
-              <div className="relative w-full md:w-[80%] mx-auto aspect-[16/6.75] rounded-2xl border border-gray-200 shadow-sm overflow-hidden bg-white">
+              <div className="relative w-full md:w-[90%] mx-auto aspect-[16/7] rounded-2xl border border-gray-200 shadow-sm overflow-hidden bg-white">
                 {heroSrc ? (
                   <img
                     src={heroSrc}
@@ -194,8 +270,10 @@ const TravelFeedDetail: React.FC = () => {
                 )}
               </div>
             </figure>
+          </section>
 
-            {/* 1일차 코스 */}
+          {/* ===== 1일차 코스 ===== */}
+          <section className={`${W_70} mx-auto`}>
             {firstDay && (
               <div className="mt-10">
                 <FeedTimelineContainer title="1일차 코스" places={firstDayPlaces} />
@@ -242,7 +320,7 @@ const TravelFeedDetail: React.FC = () => {
               ))}
           </section>
 
-          {/* 지도 Placeholder */}
+          {/* ===== 지도 Placeholder ===== */}
           <section className={`${W_60} mx-auto mt-12`}>
             <p className="text-center text-sm text-gray-500 mb-2">지도 API 연동 예정</p>
             <div className="h-80 md:h-96 rounded-2xl border border-gray-200 flex items-center justify-center bg-white">
@@ -250,19 +328,19 @@ const TravelFeedDetail: React.FC = () => {
             </div>
           </section>
 
-          {/* 여행 후기(body) */}
+          {/* ===== 여행 후기(body) ===== */}
           {resp.body && (
             <section className={`${W_60} mx-auto mt-12`}>
-              <h2 className="text-lg font-semibold mb-2">여행 후기</h2>
+              <h2 className="text-xl font-semibold mb-3">여행 후기</h2>
               <article className="whitespace-pre-line text-gray-800 text-[15px] leading-7">
                 {resp.body}
               </article>
             </section>
           )}
 
-          {/* 댓글 */}
+          {/* ===== 댓글 ===== */}
           <section className={`${W_60} mx-auto mt-12`}>
-            <FeedComments feedId={resp.feed_id} /> {/* ✅ 여기! */}
+            <FeedComments feedId={resp.feed_id} />
           </section>
 
           <div className="h-10" />

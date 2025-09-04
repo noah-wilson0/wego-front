@@ -24,10 +24,14 @@ const diffDays = (startISO?: string, endISO?: string) => {
   const ms = e.getTime() - s.getTime();
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
 };
-const formatDuration = (startISO?: string, endISO?: string) => {
+// ✅ n박 n일 표기
+const formatNightsDays = (startISO?: string, endISO?: string) => {
   const d = diffDays(startISO, endISO);
-  return d > 0 ? `${d}일` : "";
+  if (d <= 0) return "";
+  const n = Math.max(0, d - 1);
+  return `${n}박 ${d}일`;
 };
+
 const collectTopPlaceTitles = (days: FeedResponse["days"] | undefined): string[] => {
   const titles: string[] = [];
   if (!days) return titles;
@@ -123,16 +127,26 @@ const MainFeed: React.FC = () => {
           const cover =
             findFirstPlaceImage(f.days) ||
             "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=200&fit=crop";
+
+          // ✅ 케미 태그 매핑 추가
+          const chemis =
+            f.chemis?.map((c) => ({
+              id: c.id,
+              name: c.name,
+              image: c.image,
+            })) ?? [];
+
           return {
             id: f.feed_id,
             title: f.title,
-            location: f.slug,
-            duration: formatDuration(f.start_date, f.end_date),
+            location: f.slug,                       // 지역 문자열
+            duration: formatNightsDays(f.start_date, f.end_date), // n박 n일
             views: String(f.view_count),
             likes: String(f.like_count),
             tags,
             region: f.slug,
             image: cover,
+            chemis,                                 // ✅ 카드에서 사용할 케미
           };
         });
 

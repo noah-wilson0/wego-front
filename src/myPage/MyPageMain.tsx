@@ -70,7 +70,8 @@ const ChemiCard: React.FC<ChemiCardProps> = ({ title, image, onClick, className 
   );
 };
 
-/* -------------------------- 리뷰 카드(기존 유지) -------------------------- */
+/* -------------------------- 리뷰 카드 (이 파일 전용) -------------------------- */
+/** 카드에 필요한 데이터 타입 */
 export interface TravelReviewData {
   id: number;
   title: string;
@@ -81,13 +82,36 @@ export interface TravelReviewData {
   tags: string[];
   region: string;
   image?: string;
+  /** ✅ 케미 태그 (카드 하단 칩으로 표시) */
+  chemis?: { id: number; name: string; image?: string }[];
 }
+
+/** 작은 케미 칩(원형 이미지 + 이름) */
+const ChemiMiniChip: React.FC<{ name: string; image?: string }> = ({ name, image }) => {
+  return (
+    <span
+      title={name}
+      className="inline-flex items-center gap-1 bg-gray-100 border border-gray-200 text-[11px] font-medium text-gray-700 px-2.5 py-1 rounded-full"
+    >
+      {image ? (
+        <img
+          src={image}
+          alt={name}
+          className="w-4 h-4 rounded-full object-cover"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')}
+        />
+      ) : (
+        <span className="w-4 h-4 rounded-full bg-gray-300 inline-block" />
+      )}
+      <span className="leading-none">{name}</span>
+    </span>
+  );
+};
 
 interface TagPillProps {
   text: string;
   showPlus?: boolean;
 }
-
 const TagPill: React.FC<TagPillProps> = ({ text, showPlus = true }) => {
   return (
     <span className="inline-flex items-center gap-1 bg-blue-50 border border-blue-100 shadow-sm text-xs font-medium text-gray-700 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors">
@@ -102,15 +126,22 @@ interface TravelReviewCardProps {
   onClick?: (review: TravelReviewData) => void;
 }
 
+/** 마이페이지 메인에서만 쓰는 간단 카드 (공용 카드와 스타일 맞춤) */
 const TravelReviewCard: React.FC<TravelReviewCardProps> = ({ review, onClick }) => {
-  const { image, title, location, duration, views, likes, tags, region } = review;
+  const { image, title, location, duration, views, likes, tags, region, chemis = [] } = review;
   const handleClick = () => onClick?.(review);
+
+  // ✅ 케미 칩: 최대 3개만 노출, 초과는 "…" 배지
+  const MAX_CHEMI = 3;
+  const visibleChemis = chemis.slice(0, MAX_CHEMI);
+  const extraCount = Math.max(0, chemis.length - MAX_CHEMI);
 
   return (
     <div 
       className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer max-w-sm"
       onClick={handleClick}
     >
+      {/* 이미지 영역 */}
       <div className="relative">
         <div className="aspect-[4/3] bg-gradient-to-br from-blue-400 to-blue-600">
           <img 
@@ -119,12 +150,14 @@ const TravelReviewCard: React.FC<TravelReviewCardProps> = ({ review, onClick }) 
             className="w-full h-full object-cover" 
           />
         </div>
+        {/* 지역 */}
         <div className="absolute top-3 left-3">
           <span className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-medium flex items-center shadow-sm">
             <MapPin className="w-3 h-3 mr-1 text-blue-500" />
             {region}
           </span>
         </div>
+        {/* 기간 */}
         <div className="absolute top-3 right-3">
           <span className="bg-black/60 backdrop-blur-sm text-white px-2 py-1 rounded-md text-xs font-medium">
             {duration}
@@ -132,7 +165,9 @@ const TravelReviewCard: React.FC<TravelReviewCardProps> = ({ review, onClick }) 
         </div>
       </div>
 
+      {/* 내용 영역 */}
       <div className="p-4">
+        {/* 제목 + 메타 */}
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-bold text-lg text-gray-900 line-clamp-1 flex-1 mr-3">
             {title}
@@ -148,12 +183,16 @@ const TravelReviewCard: React.FC<TravelReviewCardProps> = ({ review, onClick }) 
             </span>
           </div>
         </div>
-        <div className="flex items-center text-sm text-gray-500 mb-4">
-          <span>{location}</span>
+
+        {/* 위치 | 기간 */}
+        <div className="flex items-center text-sm text-gray-500 mb-3">
+          <span className="line-clamp-1">{location}</span>
           <span className="mx-2">|</span>
           <span>{duration}</span>
         </div>
-        <div className="space-y-2">
+
+        {/* 코스 요약 태그 */}
+        <div className="space-y-2 mb-3">
           {tags.slice(0, 2).map((tag, index) => (
             <div key={index} className="flex items-center text-sm text-gray-600">
               <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mr-3 flex-shrink-0" />
@@ -167,6 +206,23 @@ const TravelReviewCard: React.FC<TravelReviewCardProps> = ({ review, onClick }) 
             </div>
           )}
         </div>
+
+        {/* ✅ 케미 칩 */}
+        {chemis.length > 0 && (
+          <div className="flex items-center flex-wrap gap-2">
+            {visibleChemis.map((c) => (
+              <ChemiMiniChip key={c.id} name={c.name} image={c.image} />
+            ))}
+            {extraCount > 0 && (
+              <span
+                className="text-[11px] text-gray-600 bg-gray-100 border border-gray-200 px-2 py-1 rounded-full"
+                title={`외 ${extraCount}개`}
+              >
+                …
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -178,19 +234,16 @@ function daysBetween(today: Date, target: Date) {
   const s = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
   return Math.round((s - t) / (1000 * 60 * 60 * 24)); // target - today
 }
-
 function calcDDay(startDateISO: string): string {
   const today = new Date();
   const start = new Date(startDateISO);
   const diff = daysBetween(today, start);
-
   if (diff === 0) return 'D-Day';
   if (diff > 0) return `D-${diff}`;
   return `D+${Math.abs(diff)}`;
 }
 
 /* ----------------------------- 리뷰 유틸 ----------------------------- */
-// 날짜 차이(일수)
 const diffDays = (startISO?: string, endISO?: string) => {
   if (!startISO || !endISO) return 0;
   const s = new Date(startISO);
@@ -198,9 +251,12 @@ const diffDays = (startISO?: string, endISO?: string) => {
   const ms = e.getTime() - s.getTime();
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
 };
-const formatDuration = (startISO?: string, endISO?: string) => {
-  const days = diffDays(startISO, endISO);
-  return days > 0 ? `${days}일` : '';
+// ✅ n박 n일 표기
+const formatNightsDays = (startISO?: string, endISO?: string) => {
+  const d = diffDays(startISO, endISO);
+  if (d <= 0) return '';
+  const n = Math.max(0, d - 1);
+  return `${n}박 ${d}일`;
 };
 
 // PlaceItem.title 3개까지 수집(모자라면 다음 날로 이어서)
@@ -247,23 +303,12 @@ const MyPageMain: React.FC = () => {
 
   const handleSidebarMenuClick = (menu: string) => {
     switch (menu) {
-      case 'profile':
-        navigate('/mypage/profile');
-        break;
-      case 'home':
-        navigate('/mypage');
-        break;
-      case 'chemi':
-        navigate('/mypage/chemi');
-        break;
-      case 'review':
-        navigate('/mypage/feed');
-        break;
-      case 'itinerary':
-        navigate('/mypage/itinerary');
-        break;
-      default:
-        navigate('/mypage');
+      case 'profile': navigate('/mypage/profile'); break;
+      case 'home': navigate('/mypage'); break;
+      case 'chemi': navigate('/mypage/chemi'); break;
+      case 'review': navigate('/mypage/feed'); break;
+      case 'itinerary': navigate('/mypage/itinerary'); break;
+      default: navigate('/mypage');
     }
   };
 
@@ -405,6 +450,7 @@ const MyPageMain: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
+  // ✅ FeedResponse → 카드 뷰모델로 변환 (케미 칩 & n박 n일 포함)
   const reviewCards: TravelReviewData[] = useMemo(() => {
     if (!feeds) return [];
     return [...feeds].sort((a, b) => {
@@ -414,18 +460,25 @@ const MyPageMain: React.FC = () => {
       return tb - ta;
     }).map<TravelReviewData>((f) => {
       const tags = collectTopPlaceTitles(f.days);
-      const cover = findFirstPlaceImage(f.days) ||
+      const cover =
+        findFirstPlaceImage(f.days) ||
         'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=200&fit=crop';
+
+      // ✅ 케미 태그 매핑 (id, name, image만)
+      const chemis =
+        f.chemis?.map((c) => ({ id: c.id, name: c.name, image: c.image })) ?? [];
+
       return {
         id: f.feed_id,
         title: f.title,
         location: f.slug,
-        duration: formatDuration(f.start_date, f.end_date),
+        duration: formatNightsDays(f.start_date, f.end_date), // n박 n일
         views: String(f.view_count),
         likes: String(f.like_count),
         tags,
         region: f.slug,
         image: cover,
+        chemis, // ✅ 카드 하단에서 케미 칩으로 사용
       };
     });
   }, [feeds]);

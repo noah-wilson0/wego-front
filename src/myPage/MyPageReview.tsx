@@ -19,7 +19,7 @@ const api = axios.create({
 });
 
 /* ------------------------ 유틸 ------------------------ */
-const diffDays = (startISO: string, endISO: string) => {
+const diffDays = (startISO?: string, endISO?: string) => {
   if (!startISO || !endISO) return 0;
   const s = new Date(startISO);
   const e = new Date(endISO);
@@ -27,9 +27,12 @@ const diffDays = (startISO: string, endISO: string) => {
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
 };
 
-const formatDuration = (startISO: string, endISO: string) => {
-  const days = diffDays(startISO, endISO);
-  return days > 0 ? `${days}일` : '';
+// ✅ n박 n일 표기
+const formatNightsDays = (startISO?: string, endISO?: string) => {
+  const d = diffDays(startISO, endISO);
+  if (d <= 0) return '';
+  const n = Math.max(0, d - 1);
+  return `${n}박 ${d}일`;
 };
 
 // days를 1일차부터 순서대로 훑으면서 PlaceItem.title을 최대 3개 모읍니다.
@@ -157,27 +160,34 @@ const MyPageReview: React.FC = () => {
     });
 
     return sorted.map<TravelReviewData>((f) => {
-      const tags = collectTopPlaceTitles(f.days); // ✅ 0~2까지 채우되 모자라면 다음 날로 이어서 채움
-      const cover = findFirstPlaceImage(f.days) ||
+      const tags = collectTopPlaceTitles(f.days);
+      const cover =
+        findFirstPlaceImage(f.days) ||
         'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&h=200&fit=crop';
+
+      // ✅ 케미 태그 매핑 추가
+      const chemis =
+        f.chemis?.map((c) => ({ id: c.id, name: c.name, image: c.image })) ?? [];
 
       return {
         id: f.feed_id,
         title: f.title,
         location: f.slug,
-        duration: formatDuration(f.start_date, f.end_date),
+        duration: formatNightsDays(f.start_date, f.end_date), // n박 n일
         views: String(f.view_count),
         likes: String(f.like_count),
-        tags,                 // ✅ 항상 최대 3개까지 들어가도록 수집
+        tags,
         region: f.slug,
         image: cover,
+        chemis, // ✅ 카드에서 사용
       };
     });
   }, [feeds, sortBy]);
 
   const handleReviewClick = (review: TravelReviewData) => {
+    // detail 페이지로 이동하려면 아래 주석 해제
+    // navigate(`/feed/${review.id}`);
     console.log(`${review.title} 클릭됨`);
-    // detail 페이지가 있다면 navigate(`/feed/${review.id}`)
   };
 
   const handleSortChange = (option: typeof sortBy) => {
