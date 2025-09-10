@@ -32,6 +32,18 @@ interface ApiSettlementResponse {
   items: ApiSettlementItem[];
 }
 
+/* ===== 정산 결과 타입 ===== */
+interface ApiSettlementResult {
+  budget: number;
+  people: number;
+  participants: {
+    name: string;
+    paidTotal: number; // 낸 총액
+    share: number;     // 부담액
+    diff: number;      // 정산금(+)더내기 / (-)돌려받기
+  }[];
+}
+
 /* ===== ENUM ↔ 라벨 ===== */
 const CATEGORY_KO = {
   TRANSPORT: '교통',
@@ -74,7 +86,6 @@ const BudgetModal: React.FC<BudgetModalProps> = ({
 }) => {
   if (!open || typeof document === 'undefined') return null;
 
-  // ESC로 닫기
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -126,6 +137,86 @@ const BudgetModal: React.FC<BudgetModalProps> = ({
   );
 };
 
+/* ===== 정산 결과 모달 ===== */
+const SettlementResultModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  result: ApiSettlementResult | null;
+}> = ({ open, onClose, result }) => {
+  if (!open || typeof document === 'undefined') return null;
+
+  return ReactDOM.createPortal(
+    <>
+      <div className="fixed inset-0 bg-black/30 z-[1000]" onClick={onClose} />
+      <div className="fixed inset-0 z-[1001] flex items-center justify-center">
+        <div
+          className="w-full max-w-lg mx-4 rounded-2xl bg-white shadow-2xl border p-6 relative"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            aria-label="닫기"
+            onClick={onClose}
+            className="absolute top-3 right-3 p-2 rounded-full hover:bg-gray-100"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+
+          <h3 className="text-xl font-bold mb-4">정산 결과</h3>
+
+          {result ? (
+            <>
+              <div className="mb-4 flex items-center justify-between text-sm text-gray-700">
+                <span>총 예산 <b>{fmt(result.budget)}</b>원</span>
+                <span>참여 인원 <b>{result.people}</b>명</span>
+              </div>
+
+              <div className="space-y-3">
+                {result.participants.map((p, idx) => (
+                  <div key={idx} className="rounded-xl border bg-gray-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-800">{p.name}</span>
+                      <span
+                        className={`font-semibold ${
+                          p.diff > 0 ? 'text-red-500' : p.diff < 0 ? 'text-green-600' : 'text-gray-700'
+                        }`}
+                        title="정산금(양수: 더 내야 함 / 음수: 돌려받음)"
+                      >
+                        {p.diff > 0 ? `+${fmt(p.diff)}원` : `${fmt(p.diff)}원`}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-md bg-white px-3 py-2 border">
+                        <p className="text-gray-500">낸 금액</p>
+                        <p className="mt-0.5 font-medium text-gray-800">{fmt(p.paidTotal)}원</p>
+                      </div>
+                      <div className="rounded-md bg-white px-3 py-2 border">
+                        <p className="text-gray-500">부담액</p>
+                        <p className="mt-0.5 font-medium text-gray-800">{fmt(p.share)}원</p>
+                      </div>
+                      <div className="rounded-md bg-white px-3 py-2 border">
+                        <p className="text-gray-500">정산금</p>
+                        <p className="mt-0.5 font-medium">
+                          <span className={p.diff > 0 ? 'text-red-500' : p.diff < 0 ? 'text-green-600' : 'text-gray-800'}>
+                            {p.diff > 0 ? `+${fmt(p.diff)}` : fmt(p.diff)}원
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-400 text-center py-6">정산 결과가 없습니다.</p>
+          )}
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+};
+
 /* ===== Component ===== */
 const Settlement: React.FC<SettlementProps> = ({
   isAuthenticated,
@@ -134,12 +225,18 @@ const Settlement: React.FC<SettlementProps> = ({
   initialExpenses = [],
   openSignal = 'wego:open-settlement-sheet',
 }) => {
-  const { travelPlanId } = useParams<{ travelPlanId?: string }>();
+  // 라우트: /check/:travelPlanId 또는 /check/t/:token
+  const { travelPlanId, token } = useParams<{ travelPlanId?: string; token?: string }>();
+  const isShare = !!token;
+
+  // 엔드포인트 빌더
+  const basePath = isShare
+    ? `http://localhost:8080/travel_plan/settlements/share/${token}`
+    : `http://localhost:8080/travel_plan/settlements/${travelPlanId}`;
+  const url = (suffix = '') => `${basePath}${suffix}`;
 
   const [budget, setBudget] = useState<number>(initialBudget);
-  const [pendingBudget, setPendingBudget] = useState<string>(
-    initialBudget.toLocaleString('ko-KR')
-  );
+  const [pendingBudget, setPendingBudget] = useState<string>(initialBudget.toLocaleString('ko-KR'));
   const [isBudgetConfirmed, setIsBudgetConfirmed] = useState<boolean>(false);
 
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
@@ -159,20 +256,23 @@ const Settlement: React.FC<SettlementProps> = ({
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [confirmingBudget, setConfirmingBudget] = useState(false);
 
+  // 정산 결과 모달
+  const [resultModalOpen, setResultModalOpen] = useState(false);
+  const [settlementResult, setSettlementResult] = useState<ApiSettlementResult | null>(null);
+
   // 버튼 클릭 후 예산 저장 성공 시 시트를 자동으로 열기 위한 플래그
   const openSheetAfterBudget = useRef(false);
 
-  /* ---------- 최초 데이터 조회(캐싱만) ---------- */
+  /* ---------- 최초 데이터 조회 ---------- */
   const fetchSettlement = async () => {
-    if (!isAuthenticated || !travelPlanId) return;
+    if (!isAuthenticated) return;
+    if (!isShare && !travelPlanId) return;
+    if (isShare && !token) return;
+
     try {
       setLoading(true);
-      const res = await axios.get<ApiSettlementResponse>(
-        `http://localhost:8080/travel_plan/settlements/${travelPlanId}`,
-        { withCredentials: true }
-      );
+      const { data } = await axios.get<ApiSettlementResponse>(url(''), { withCredentials: true });
 
-      const data = res.data;
       const parsed = parseBudget(data.budget);
       setSettlementId(data.settlementId ?? null);
       setBudget(parsed);
@@ -187,11 +287,8 @@ const Settlement: React.FC<SettlementProps> = ({
           amount: it.paid,
         })) ?? [];
       setExpenses(mapped);
-
-      // ❌ 자동 모달 오픈 없음
     } catch (err) {
-      // 실패해도 자동 모달 오픈하지 않음. budget=0 유지.
-      console.error('[Settlement] GET 실패:', err?.response || err);
+      console.error('[Settlement] GET 실패:', err);
       setSettlementId(null);
       setBudget(0);
       setPendingBudget('0');
@@ -205,9 +302,9 @@ const Settlement: React.FC<SettlementProps> = ({
   useEffect(() => {
     fetchSettlement();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, travelPlanId]);
+  }, [isAuthenticated, travelPlanId, token]);
 
-  /* ---------- 외부 버튼(정산 내역 입력) 클릭 시 행동 ---------- */
+  /* ---------- 외부 버튼(정산 내역 입력) ---------- */
   useEffect(() => {
     const onOpen = () => {
       if (!isAuthenticated) {
@@ -217,7 +314,6 @@ const Settlement: React.FC<SettlementProps> = ({
       if (budget > 0) {
         setSheetOpen(true);
       } else {
-        // 예산이 없으면 모달만 띄움 (자동으로는 안 띄웠다가, 버튼 때만)
         openSheetAfterBudget.current = true;
         setBudgetModalOpen(true);
       }
@@ -240,33 +336,26 @@ const Settlement: React.FC<SettlementProps> = ({
   };
 
   const confirmBudget = async () => {
-    if (!travelPlanId) return;
     const n = Number(pendingBudget.replace(/[,]/g, ''));
     if (!Number.isFinite(n) || n <= 0) {
       alert('올바른 예산 금액을 입력하세요.');
       return;
     }
-
     try {
       setConfirmingBudget(true);
       if (settlementId == null) {
-        await axios.post(
-          `http://localhost:8080/travel_plan/settlements/${travelPlanId}`,
-          n,
-          { headers: { 'Content-Type': 'application/json' }, withCredentials: true }
-        );
+        await axios.post(url(''), n, {
+          headers: { 'Content-Type': 'application/json' },
+          withCredentials: true,
+        });
       } else {
-        await axios.patch(
-          `http://localhost:8080/travel_plan/settlements/${travelPlanId}`,
-          n,
-          { headers: { 'Content-Type': 'application/json' }, withCredentials: true }
-        );
+        await axios.patch(url(''), n, {
+          headers: { 'Content-Type': 'application/json' },
+          withCredentials: true,
+        });
       }
-
       await fetchSettlement();
       setBudgetModalOpen(false);
-
-      // 버튼에서 유입됐다면 예산 저장 직후 시트 열어주기
       if (openSheetAfterBudget.current) {
         openSheetAfterBudget.current = false;
         setSheetOpen(true);
@@ -291,19 +380,16 @@ const Settlement: React.FC<SettlementProps> = ({
       onRequireLogin?.();
       return;
     }
-    if (!travelPlanId) return;
-
     const amount = Number(sheetAmount.replace(/[,]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) {
       alert('금액을 올바르게 입력하세요.');
       return;
     }
-
     const categoryEnum = KO_TO_ENUM[sheetCategoryKo] ?? 'ETC';
 
     try {
       await axios.post(
-        `http://localhost:8080/travel_plan/settlements/${travelPlanId}/items`,
+        url('/items'),
         { category: categoryEnum, paid: amount },
         { withCredentials: true }
       );
@@ -352,10 +438,7 @@ const Settlement: React.FC<SettlementProps> = ({
           </button>
         </div>
         <div className="w-full bg-violet-100 rounded-full h-2 overflow-hidden">
-          <div
-            className="h-2 bg-violet-500 transition-all duration-300"
-            style={{ width: `${percent}%` }}
-          />
+          <div className="h-2 bg-violet-500 transition-all duration-300" style={{ width: `${percent}%` }} />
         </div>
       </div>
 
@@ -376,21 +459,58 @@ const Settlement: React.FC<SettlementProps> = ({
         )}
       </div>
 
-      {/* 하단 정산하기 버튼 (예산 없어도 그대로 보이되, 기능은 별도) */}
-      <div className="mt-4">
+      {/* 하단 정산하기 / 이전 정산 보기 */}
+      <div className="mt-4 flex flex-col gap-2">
         <button
           className={`w-full rounded-lg py-3 text-base font-semibold ${
-            isBudgetConfirmed
-              ? 'bg-violet-500 hover:bg-violet-600 text-white'
-              : 'bg-violet-300 text-white cursor-not-allowed'
+            isBudgetConfirmed ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-violet-300 text-white cursor-not-allowed'
           }`}
           disabled={!isBudgetConfirmed}
-          onClick={() => {
+          onClick={async () => {
             if (!isBudgetConfirmed) return;
-            alert('정산하기 플로우는 다음 단계에서 구현 예정입니다.');
+            try {
+              if (isShare) {
+                // 공유 모드: 현재 백엔드가 GET만 구현됨
+                const { data } = await axios.get<ApiSettlementResult>(url('/result'), {
+                  withCredentials: true,
+                });
+                setSettlementResult(data);
+                setResultModalOpen(true);
+              } else {
+                // 회원 모드: POST로 생성
+                const { data } = await axios.post<ApiSettlementResult>(url('/result'), {}, { withCredentials: true });
+                setSettlementResult(data);
+                setResultModalOpen(true);
+              }
+            } catch (err) {
+              console.error('[Settlement] 정산하기 실패:', err);
+              alert('정산하기에 실패했습니다. 잠시 후 다시 시도해주세요.');
+            }
           }}
         >
           정산하기
+        </button>
+
+        <button
+          className="w-full rounded-lg py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700"
+          onClick={async () => {
+            try {
+              const { data } = await axios.get<ApiSettlementResult>(url('/result'), {
+                withCredentials: true,
+              });
+              setSettlementResult(data);
+              setResultModalOpen(true);
+            } catch (err: any) {
+              if (err?.response?.status === 404) {
+                alert('이전에 저장된 정산 내역이 없습니다.');
+              } else {
+                console.error('[Settlement] 정산 내역 조회 실패:', err);
+                alert('정산 내역 조회에 실패했습니다. 잠시 후 다시 시도해주세요.');
+              }
+            }
+          }}
+        >
+          이전 정산 내역 보기
         </button>
       </div>
 
@@ -407,18 +527,24 @@ const Settlement: React.FC<SettlementProps> = ({
         onSubmit={onSubmitSheet}
       />
 
-      {/* 예산 설정 모달 (자동 오픈 없음) */}
+      {/* 예산 설정 모달 */}
       <BudgetModal
         open={budgetModalOpen}
         onClose={() => {
           setBudgetModalOpen(false);
-          // 사용자가 닫아도 자동으로 다시 열지 않음
           openSheetAfterBudget.current = false;
         }}
         pendingBudget={pendingBudget}
         onChangePendingBudget={onChangePendingBudget}
         onConfirm={confirmBudget}
         confirming={confirmingBudget}
+      />
+
+      {/* 정산 결과 모달 */}
+      <SettlementResultModal
+        open={resultModalOpen}
+        onClose={() => setResultModalOpen(false)}
+        result={settlementResult}
       />
     </div>
   );
