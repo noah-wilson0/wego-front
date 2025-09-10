@@ -1,54 +1,18 @@
-// src/pages/TravelPlanCheck.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapPin } from 'lucide-react';
 import { SingleTimelineItem } from './components/TimelineIcon';
 import TravelPlanSavedModal from './components/travelPlanSavedModal';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import Settlement from './components/Settlement';
 
-/* ===========================================================
- * 📌 토큰 접근 시 처리
- * - /check/t/:token → 서버에 GET /travel_plan/share/{token} 요청
- * - 서버가 TravelPlanResponse 반환 → travelData 상태에 반영
- * - 내부적으로 planId를 못 받아오면 저장 버튼 비활성화
- *
- * 📌 현재 화면 확인
- * - 주인(/check/:id)과 공유자(/check/t/:token) 모두 화면 렌더링 성공
- * - 두 경우 모두 타임라인 / 지도 패널 정상 표시됨 (스크린샷 확인 완료)
- * - 편집 버튼까지 동일하게 표시됨
- *
- * 📌 현재 발견된 차이 (버튼 상태)
- * - 편집 버튼 누르기 전
- *   · 주인과 공유자 화면이 완전히 동일
- *   · "편집" 버튼 활성화됨
- *   · "저장" 버튼은 기본적으로 비활성화
- *
- * - 편집 버튼 누른 후
- *   · 주인 모드: 저장 버튼이 비활성화(회색) → 편집 중에 데이터가 수정되면 활성화됨
- *   · 공유자 모드: 저장 버튼이 바로 빨간색(활성화된 상태)
- *   → 저장 버튼 색상 차이로 UI 상 주인/공유자 구분 가능
- *
- * 📌 이후 계획 (메모)
- * - 현재는 화면 정상 렌더링 확인 완료 ✅
- * - 저장/편집 로직은 "실시간 협업 기능" 구현 단계에서 처리 예정 → 지금은 중단
- * - UI 메모:
- *   · 주인 vs 공유자 차이는 현재 "저장 버튼 활성화 여부"뿐
- *   · 협업 기능 구현 시 다시 정리 필요
- * =========================================================== */
-
-
-/* ===========================================================
- * axios 인스턴스 (쿠키 자동 포함)
- * =========================================================== */
+/* axios */
 const api = axios.create({
   baseURL: 'http://localhost:8080',
   withCredentials: true,
 });
 
-/* ===========================================================
- * 공통 에러 로거
- * =========================================================== */
+/* 에러 로거 */
 const logAxiosError = (err: unknown, label: string) => {
   if (axios.isAxiosError(err)) {
     console.error(`[${label}] status=`, err.response?.status, 'data=', err.response?.data);
@@ -57,13 +21,12 @@ const logAxiosError = (err: unknown, label: string) => {
   }
 };
 
-/* ===========================================================
- * 레이아웃
- * =========================================================== */
+/* 레이아웃 (이 파일 안에서 정의하는 버전) */
 interface FullCheckColumnLayoutProps {
   children: React.ReactNode;
   settlementContent?: React.ReactNode;
   mapContent?: React.ReactNode;
+  settlementHeaderRight?: React.ReactNode; // ✅ 오른쪽 버튼
   activeStep: number;
   setActiveStep: (step: number) => void;
   onNext?: () => void;
@@ -82,6 +45,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   children,
   settlementContent,
   mapContent,
+  settlementHeaderRight,
   isMainPanelOpen,
   setIsMainPanelOpen,
   selectedDay,
@@ -93,8 +57,6 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   canSave = false,
   editDisabled = false,
 }) => {
-  const [isSettlementPanelOpen, setIsSettlementPanelOpen] = useState(true);
-
   return (
     <div className="flex h-screen">
       {/* 왼쪽 사이드바 */}
@@ -179,7 +141,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
 
       {/* 오른쪽: 지도/정산 */}
       <div className={`${isMainPanelOpen ? 'flex-1' : 'w-[65%]'} transition-all duration-300 relative flex flex-col`}>
-        <div className={`${true ? 'h-1/2' : 'flex-1'} bg-gray-200 p-4 transition-all duration-300`}>
+        <div className="h-1/2 bg-gray-200 p-4 transition-all duration-300">
           <div className="h-full bg-white rounded shadow-sm">
             {mapContent || (
               <div className="h-full flex flex-col items-center justify-center">
@@ -190,12 +152,17 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
           </div>
         </div>
 
-        <div className={`h-1/2 bg-white border-t transition-all duration-300 relative flex-shrink-0`}>
+        <div className="h-1/2 bg-white border-t transition-all duration-300 relative flex-shrink-0">
           <div className="p-4 h-full pt-8 overflow-auto">
-            <div className="mb-4">
+            {/* ✅ ‘정산하기’ 타이틀은 여기에서만 렌더 */}
+            <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">정산하기</h2>
+              {settlementHeaderRight}
             </div>
-            <div className="h-full">{/* 정산 패널 자리 */}</div>
+
+            <div className="h-full">
+              {settlementContent || <div className="text-gray-500 text-center py-8">정산 내역이 없습니다.</div>}
+            </div>
           </div>
         </div>
       </div>
@@ -203,9 +170,7 @@ const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
   );
 };
 
-/* ===========================================================
- * 타입 정의
- * =========================================================== */
+/* 타입들 */
 interface Place {
   content_id: string;
   place_type: string;
@@ -237,7 +202,7 @@ interface Route {
   destination: string;
   taxiFare?: number;
   distance?: number;
-  duration: number; // 초 단위
+  duration: number;
 }
 interface DayRoute {
   [date: string]: Route[];
@@ -253,28 +218,18 @@ interface TravelData {
   routes: RouteData[];
 }
 
-/* ===========================================================
- * 유틸
- * =========================================================== */
-const formatDuration = (seconds: number): string => {
-  const minutes = Math.round(seconds / 60);
-  return `${minutes}분`;
-};
+/* 유틸 */
+const formatDuration = (seconds: number): string => `${Math.round(seconds / 60)}분`;
 
-/* ===========================================================
- * 메인 컴포넌트
- * =========================================================== */
+/* 메인 */
 type Mode = 'create' | 'edit';
 
 const TravelPlanCheck: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { travelPlanId } = useParams<{ travelPlanId?: string }>();
-
-  // 토큰 파라미터 — /check/t/:token
   const { token } = useParams<{ token?: string }>();
 
-  // URL에 planId 있으면 edit, 아니면 create
   const mode: Mode = travelPlanId ? 'edit' : 'create';
 
   const [activeStep, setActiveStep] = useState(3);
@@ -283,28 +238,23 @@ const TravelPlanCheck: React.FC = () => {
   const [travelData, setTravelData] = useState<TravelData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // [ADD] 공유 링크로 들어온 경우 PUT에 쓸 planId를 따로 보관
   const [sharePlanId, setSharePlanId] = useState<string | null>(null);
   const shareMode = !!token || !!sharePlanId;
 
-  // 버튼 상태
-  const [isEditing, setIsEditing] = useState(mode === 'create'); // 생성 모드면 true로 시작
-  const [isDirty, setIsDirty] = useState(mode === 'create');     // 생성 모드면 true로 시작
-
+  const [isEditing, setIsEditing] = useState(mode === 'create');
+  const [isDirty, setIsDirty] = useState(mode === 'create');
   const [showSavedModal, setShowSavedModal] = useState(false);
 
-  // 데모용 정산 리스트
-  const [selectedPlaces] = useState([
-    { id: 's1', name: '산둘레숲길', category: '명소', image: '/api/placeholder/60/60', placeType: 'A01' as const },
-    { id: 's2', name: '홍두깨가게', category: '음식점', image: '/api/placeholder/60/60', placeType: 'A02' as const },
-    { id: 's3', name: '치료제과점마을', category: '카페', image: '/api/placeholder/60/60', placeType: 'A03' as const },
-  ]);
+  // 정산 접근 권한
+  const [isAuthForSettlement, setIsAuthForSettlement] = useState<boolean>(false);
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
 
-  /* -------------------------------------------
-   * [ADD] 토큰 진입: /travel_plan/share/{token}
-   *  - 보기 + 편집/저장까지 가능하도록 planId도 함께 보관
-   *  - 백엔드가 travel_plan_id 또는 travelPlanId를 내려준다고 가정
-   * ------------------------------------------ */
+  const redirectToLogin = () => {
+    const redirect = encodeURIComponent(location.pathname + location.search);
+    navigate(`/login?redirect=${redirect}`);
+  };
+
+  /* 공유 토큰 진입 */
   useEffect(() => {
     if (!token) return;
 
@@ -315,22 +265,10 @@ const TravelPlanCheck: React.FC = () => {
         const body: any = res.data;
         setTravelData(body as TravelData);
 
-        // 응답에서 planId 후보 키 모두 시도
-        const pid =
-          body?.travel_plan_id ??
-          body?.travelPlanId ??
-          body?.planId ??
-          body?.id ??
-          null;
+        const pid = body?.travel_plan_id ?? body?.travelPlanId ?? body?.planId ?? body?.id ?? null;
+        if (pid) setSharePlanId(String(pid));
+        else console.warn('[share] planId not found in TravelPlanResponse.');
 
-        if (!pid) {
-          // planId가 없으면 저장 버튼은 동작할 수 없으므로 안내만 띄우고 보기 모드 유지
-          console.warn('[share] planId not found in TravelPlanResponse. Save will be disabled.');
-        } else {
-          setSharePlanId(String(pid));
-        }
-
-        // 공유 링크에서도 편집/저장 버튼 UI는 주인과 동일하게 보이도록
         setIsEditing(false);
         setIsDirty(false);
       } catch (err) {
@@ -343,21 +281,12 @@ const TravelPlanCheck: React.FC = () => {
     })();
   }, [token, navigate]);
 
-  /* -------------------------------------------
-   * 기존 데이터 로드 (토큰 진입이 아닐 때만)
-   *  - edit  : GET /travel_plan/member/schedule/{travelPlanId}
-   *  - create: GET /travel_plan/temp/schedule/{uuid}
-   * ------------------------------------------ */
+  /* 기존 데이터 로드 */
   const fetchTravelData = useCallback(async (): Promise<TravelData> => {
     if (mode === 'edit') {
       if (!travelPlanId) throw new Error('MISSING_PLAN_ID');
-      try {
-        const res = await api.get(`/travel_plan/member/schedule/${travelPlanId}`);
-        return res.data as TravelData;
-      } catch (err) {
-        logAxiosError(err, 'GET /travel_plan/member/schedule/{planId} FAIL');
-        throw err;
-      }
+      const res = await api.get(`/travel_plan/member/schedule/${travelPlanId}`);
+      return res.data as TravelData;
     }
 
     const uuid = Cookies.get('travelPlanUUID');
@@ -365,17 +294,11 @@ const TravelPlanCheck: React.FC = () => {
       console.error('[fetchTravelData] travelPlanUUID 쿠키가 없습니다.');
       throw new Error('MISSING_UUID');
     }
-    try {
-      const tempRes = await api.get(`/travel_plan/temp/schedule/${uuid}`);
-      return tempRes.data as TravelData;
-    } catch (err) {
-      logAxiosError(err, 'GET /travel_plan/temp/schedule/{uuid} FAIL');
-      throw err;
-    }
+    const tempRes = await api.get(`/travel_plan/temp/schedule/${uuid}`);
+    return tempRes.data as TravelData;
   }, [mode, travelPlanId]);
 
   useEffect(() => {
-    // 토큰으로 이미 travelData를 세팅했다면 기존 로딩 루틴은 건너뜀
     if (token) return;
 
     (async () => {
@@ -384,40 +307,46 @@ const TravelPlanCheck: React.FC = () => {
         const data = await fetchTravelData();
         setTravelData(data);
       } catch (e: any) {
-        if (e?.message === 'MISSING_UUID') {
-          navigate('/', { replace: true });
-        } else {
-          alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-        }
+        if (e?.message === 'MISSING_UUID') navigate('/', { replace: true });
+        else alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
       } finally {
         setLoading(false);
       }
     })();
   }, [token, fetchTravelData, navigate]);
 
-  /* 편집 토글 */
+  /* 정산 권한 확인 */
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await api.get('/auth/me', { withCredentials: true });
+        console.log('auth/me status:', res.status);
+        if (mounted) setIsAuthForSettlement(true);
+      } catch (err: any) {
+        console.log('auth/me status:', err?.response?.status);
+        if (mounted) setIsAuthForSettlement(false);
+      } finally {
+        if (mounted) setAuthChecked(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /* 편집/저장 */
   const handleEdit = () => {
-    // 토큰 모드도 주인과 동일하게 토글
     setIsEditing((v) => !v);
     if (!isEditing) setIsDirty(false);
   };
-
-  /* 변경 발생 표시 */
   const markDirty = () => {
     if (!isEditing) return;
     setIsDirty(true);
   };
-
-  /* -------------------------------------------
-   * 저장
-   *  - create: POST /travel_plan/schedule/{uuid}
-   *  - edit  : PUT  /travel_plan/schedule/{id} (id = travelPlanId | sharePlanId)
-   *  - 토큰 모드: /auth/me 체크 생략
-   * ------------------------------------------ */
   const handleSave = async () => {
     if (!travelData) return;
 
-    // 토큰 모드가 아니면 로그인 확인
     if (!shareMode) {
       try {
         await api.get('/auth/me');
@@ -444,7 +373,6 @@ const TravelPlanCheck: React.FC = () => {
           alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
         }
       } else {
-        // 편집(주인) 또는 공유모드(동행자)
         const id = travelPlanId ?? sharePlanId;
         if (!id) {
           alert('저장 정보를 찾을 수 없습니다.(planId 누락)');
@@ -525,9 +453,7 @@ const TravelPlanCheck: React.FC = () => {
 
   const filteredSchedules = selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
 
-  /* 저장 버튼 활성화 조건 — 주인/동행자 공통 */
   const canSave = isEditing && (mode === 'create' ? true : isDirty);
-  const editDisabled = false; // 공유 링크(동행자)도 편집 가능하게
 
   if (loading) {
     return (
@@ -558,7 +484,6 @@ const TravelPlanCheck: React.FC = () => {
 
   const mainContent = (
     <div className="bg-white h-full flex flex-col">
-      {/* 헤더 */}
       <div className="p-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -571,7 +496,6 @@ const TravelPlanCheck: React.FC = () => {
         </p>
       </div>
 
-      {/* 타임라인 */}
       <div className="flex-1 p-6 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <style>{`div::-webkit-scrollbar{display:none}`}</style>
         <div className={`flex gap-12 transition-all duration-300 ${isMainPanelOpen ? 'min-w-max' : ''}`}>
@@ -591,9 +515,8 @@ const TravelPlanCheck: React.FC = () => {
                   const isLast = placeIndex === schedule.places.length - 1;
                   const info = getPlaceTypeInfo(place.placeType);
 
-                  return (
+                return (
                     <div key={placeIndex} className="flex items-start mb-8">
-                      {/* 아이콘/선 */}
                       <div className="flex-shrink-0">
                         <SingleTimelineItem
                           index={placeIndex}
@@ -604,7 +527,6 @@ const TravelPlanCheck: React.FC = () => {
                         />
                       </div>
 
-                      {/* 카드 */}
                       <div className="ml-4 flex-1" style={{ marginTop: isFirst ? '0px' : '178px' }}>
                         <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
                           {place.time && <p className="text-sm text-gray-500 mb-3">{place.time}</p>}
@@ -613,15 +535,16 @@ const TravelPlanCheck: React.FC = () => {
                               <h3 className="font-medium text-sm">{place.title}</h3>
                               <span className={`text-xs ${info.textColor}`}>{info.label}</span>
                             </div>
-                            <img src={place.image} alt={place.title} className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0" />
+                            <img
+                              src={place.image || undefined}
+                              alt={place.title}
+                              className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0"
+                            />
                           </div>
                         </div>
-                        {/* 편집 시 변경이 생기면 markDirty()를 호출해야 저장 버튼 활성화 */}
-                        {/* {isEditing && <button onClick={markDirty}>이 카드 수정됨 표시</button>} */}
                       </div>
                     </div>
-                  );
-                })}
+                  );})}
               </div>
             </div>
           ))}
@@ -637,40 +560,20 @@ const TravelPlanCheck: React.FC = () => {
     </div>
   );
 
-  const settlementContent = (
-    <div className="h-full">
-      <div className="mb-4 p-4 bg-purple-50 rounded-lg">
-        <h3 className="font-semibold text-purple-800 mb-2">정산하기</h3>
-        <p className="text-sm text-purple-600 mb-3">이번여행에서 1명당 1,000,000원을 쓸 예정이에요!</p>
-        <div className="w-full bg-purple-200 rounded-full h-2 mb-2">
-          <div className="bg-purple-600 h-2 rounded-full" style={{ width: '75%' }} />
-        </div>
-        <p className="text-xs text-purple-600">1,000,000원</p>
-        <button className="w-full bg-purple-600 text-white rounded-lg py-2 mt-3 text-sm">정산하기</button>
-      </div>
+  const settlementContent = authChecked ? (
+    <Settlement isAuthenticated={isAuthForSettlement} onRequireLogin={redirectToLogin} />
+  ) : (
+    <div className="h-full flex items-center justify-center text-gray-400">확인 중…</div>
+  );
 
-      <div>
-        <h3 className="font-semibold mb-4">사용 내역</h3>
-        {selectedPlaces.map((p, i) => (
-          <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-3">
-            <div className="flex items-center gap-3">
-              <img src={p.image} alt={p.name} className="w-10 h-10 object-cover rounded" />
-              <div>
-                <p className="font-medium text-sm">{p.name}</p>
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />
-                  {p.category}
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="font-semibold">{i === 0 ? '107,460원' : i === 1 ? '24,500원' : '148,000원'}</p>
-              <p className="text-xs text-gray-500">{i === 0 ? '1인' : i === 1 ? '4인 기준' : '숙박비'}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+  /** ✅ 정산하기 타이틀 오른쪽 버튼 */
+  const settlementHeaderRight = (
+    <button
+      onClick={() => window.dispatchEvent(new Event('wego:open-settlement-sheet'))}
+      className="px-3 py-1 text-sm bg-violet-100 text-violet-700 rounded-md hover:bg-violet-200"
+    >
+      정산 내역 입력
+    </button>
   );
 
   return (
@@ -680,6 +583,7 @@ const TravelPlanCheck: React.FC = () => {
         setActiveStep={setActiveStep}
         mapContent={mapContent}
         settlementContent={settlementContent}
+        settlementHeaderRight={settlementHeaderRight}
         isMainPanelOpen={isMainPanelOpen}
         setIsMainPanelOpen={setIsMainPanelOpen}
         selectedDay={selectedDay}
@@ -689,23 +593,18 @@ const TravelPlanCheck: React.FC = () => {
         onSave={handleSave}
         isEditing={isEditing}
         canSave={canSave}
-        editDisabled={false} // 동행자도 동일 UI
+        editDisabled={false}
         onNext={() => setActiveStep(activeStep + 1)}
       >
         {mainContent}
       </FullCheckColumnLayout>
 
-      {/* 저장 성공 모달 */}
       <TravelPlanSavedModal
         show={showSavedModal}
         onClose={() => setShowSavedModal(false)}
         onConfirm={() => {
           setShowSavedModal(false);
-          if (mode === 'create' && !shareMode) {
-            navigate('/mypage');
-          } else {
-            // 편집/공유 모드에선 현재 페이지 유지
-          }
+          if (mode === 'create' && !shareMode) navigate('/mypage');
         }}
       />
     </>
