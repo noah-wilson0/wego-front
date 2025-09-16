@@ -74,7 +74,7 @@ const FeedCreatePage: React.FC = () => {
   const [loadingChemi, setLoadingChemi] = useState(false);
   const [chemiError, setChemiError] = useState<string | null>(null);
 
-  /** /feed/init/{travelPlanId} (localhost:8080) */
+  /** /feeds/init/{travelPlanId} (localhost:8080) */
   useEffect(() => {
     let aborted = false;
     const run = async () => {
@@ -83,7 +83,7 @@ const FeedCreatePage: React.FC = () => {
       setInitError(null);
       try {
         const res = await fetch(
-          `http://localhost:8080/feed/init/${encodeURIComponent(id)}`,
+          `http://localhost:8080/feeds/init/${encodeURIComponent(id)}`,
           {
             method: "GET",
             credentials: "include",
@@ -110,14 +110,14 @@ const FeedCreatePage: React.FC = () => {
     };
   }, [id]);
 
-  /** /chemi/labels (localhost:8080) */
+  /** /chemis/labels (localhost:8080) */
   useEffect(() => {
     let aborted = false;
     const run = async () => {
       setLoadingChemi(true);
       setChemiError(null);
       try {
-        const res = await fetch(`http://localhost:8080/chemi/labels`, {
+        const res = await fetch(`http://localhost:8080/chemis/labels`, {
           method: "GET",
           credentials: "include",
           headers: { Accept: "application/json" },
@@ -232,8 +232,8 @@ const FeedCreatePage: React.FC = () => {
         form.append("coverImage", draft.coverFile);
       }
 
-      // POST /feed (localhost:8080)
-      const res = await axios.post("http://localhost:8080/feed", form, {
+      // POST /feeds (localhost:8080)
+      const res = await axios.post("http://localhost:8080/feeds", form, {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
       });

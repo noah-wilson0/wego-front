@@ -136,7 +136,7 @@ const GenerationMethodPage = () => {
     if (selectedMethod === 'camera') {
       try {
         await axios.post(
-          `http://localhost:8080/travel_plan/recommend/temp/sechedule/auto/${uuid}`
+          `http://localhost:8080/draft-plans/${uuid}/auto-schedule`
         );
         alert('자동 여행 일정 생성 요청이 완료되었습니다!');
         // TODO: 다음 페이지 이동

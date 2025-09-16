@@ -46,7 +46,7 @@ const TravelPlanAccommodation: React.FC = () => {
     if (!uuid) return;
 
     axios
-      .get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
+      .get(`http://localhost:8080/draft-plans/${uuid}/dates`)
       .then((res) => {
         const { startDate, endDate } = res.data;
         if (startDate && endDate) {
@@ -88,9 +88,9 @@ const TravelPlanAccommodation: React.FC = () => {
 
     setLoading(true);
     try {
-      // ✅ 변경된 엔드포인트: /travel_plan/place/{uuid}/B01/paged
+      // ✅ 변경된 엔드포인트: /draft-plans/{uuid}/B01/paged
       const res = await axios.get(
-        `http://localhost:8080/travel_plan/place/${encodeURIComponent(uuid)}/B01/paged?page=${page}&size=20`
+        `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/B01/paged?page=${page}&size=20`
       );
 
       const newData: Accommodation[] = res.data.content.map((item: any) => ({
@@ -181,7 +181,7 @@ const TravelPlanAccommodation: React.FC = () => {
       }));
 
       await axios.post(
-        `http://localhost:8080/travel_plan/place/temp/schedule/${uuid}/accommodation`,
+        `http://localhost:8080/draft-plans/${uuid}/accommodations`,
         requestBody
       );
 

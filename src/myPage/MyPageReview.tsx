@@ -127,7 +127,7 @@ const MyPageReview: React.FC = () => {
       try {
         setLoading(true);
         setErrorMsg(null);
-        const res = await api.get<FeedResponse[]>('/members/feed');
+        const res = await api.get<FeedResponse[]>('/me/feeds');
         if (!mounted) return;
         setFeeds(Array.isArray(res.data) ? res.data : []);
       } catch {

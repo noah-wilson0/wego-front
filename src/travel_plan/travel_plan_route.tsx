@@ -31,7 +31,7 @@ export default function TravelPlanRoute({ onClose }: TravelPlanRouteProps) {
     if (!selectedOption || !uuid) return;
 
     try {
-      await axios.post(`http://localhost:8080/travel_plan/route/temp/schedule/${selectedOption}/${uuid}`);
+      await axios.post(`http://localhost:8080/draft-plans/${uuid}/${selectedOption}/route`);
       navigate("/check");
     } catch (error) {
       console.error("일정 생성 중 오류 발생:", error);

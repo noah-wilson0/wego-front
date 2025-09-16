@@ -41,7 +41,7 @@ const SnsProfileSettings: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get<MemberDetailResponse>('/profile/me');
+        const res = await api.get<MemberDetailResponse>('/me');
         if (!mounted) return;
 
         const { username, name } = res.data || { username: '', name: '' };

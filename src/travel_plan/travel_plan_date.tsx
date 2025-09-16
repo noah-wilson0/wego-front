@@ -71,7 +71,7 @@ const TravelPlanDate: React.FC = () => {
 
       try {
         // 1) 날짜 정보 저장 (JSON 객체)
-        await axios.post(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`, payload);
+        await axios.post(`http://localhost:8080/draft-plans/${uuid}/dates`, payload);
         console.log('✅ 날짜 Redis 저장 성공');
 
         // 2) uuid 쿠키에 저장
@@ -84,7 +84,7 @@ const TravelPlanDate: React.FC = () => {
         if (slug) {
           // ✅ 핵심 변경: 문자열 하나가 아니라 { slug: "..." } 형태의 "객체"로 보냅니다.
           // axios는 자동으로 application/json으로 보냅니다.
-          await axios.post(`http://localhost:8080/travel_plan/slug/${uuid}`, { slug });
+          await axios.post(`http://localhost:8080/draft-plans/slug/${uuid}`, { slug });
           console.log('✅ slug 저장 성공:', slug);
         } else {
           console.warn('⚠️ slug 값이 없습니다. localStorage를 확인하세요.');

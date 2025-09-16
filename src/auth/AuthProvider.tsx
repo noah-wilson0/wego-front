@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 로그아웃 → 홈으로
   const logout = useCallback(async () => {
     try {
-      await api.post('/members/logout');
+      await api.post('/auth/sign-out');
     } catch {}
     setIsLoggedIn(false);
     setName(null);

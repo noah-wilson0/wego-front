@@ -347,8 +347,8 @@ const MyPageMain: React.FC = () => {
         setChemiError(null);
 
         const [meChemiRes, simRes] = await Promise.all([
-          api.get<ChemiDto>('/chemi/me'),
-          api.get<ChemiListResponse>('/chemi/similar'),
+          api.get<ChemiDto>('/me/chemi'),
+          api.get<ChemiListResponse>('/chemis/similar'),
         ]);
 
         if (!mounted) return;
@@ -394,7 +394,7 @@ const MyPageMain: React.FC = () => {
         setPlanLoading(true);
         setPlanError(null);
 
-        const res = await api.get<any>('/profile/travel-plans');
+        const res = await api.get<any>('/me/travel-plans/imminent');
         if (!mounted) return;
 
         const list = normalizePlans(res.data);
@@ -437,7 +437,7 @@ const MyPageMain: React.FC = () => {
       try {
         setFeedLoading(true);
         setFeedError(null);
-        const res = await api.get<FeedResponse[]>('/members/feed');
+        const res = await api.get<FeedResponse[]>('/me/feeds');
         if (!mounted) return;
         setFeeds(Array.isArray(res.data) ? res.data : []);
       } catch {

@@ -156,8 +156,8 @@ const ChemiMain: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        console.log("[ChemiMain] GET: /api/chemi/all");
-        const res = await api.get("http://localhost:8080/chemi/all");
+        console.log("[ChemiMain] GET: /api/chemis/all");
+        const res = await api.get("http://localhost:8080/chemis/all");
         console.log("[ChemiMain] response.status:", res.status);
         console.log("[ChemiMain] response.data:", res.data);
 

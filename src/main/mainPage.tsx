@@ -230,7 +230,7 @@ const TravelMainPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get("/chemi/all");
+        const res = await api.get("/chemis/all");
         const list: ChemiDto[] = res?.data?.chemiDtoList ?? [];
         const mapped: ChemiItem[] = list.map((d) => ({
           id: deriveId(d.image, d.name),
@@ -239,7 +239,7 @@ const TravelMainPage: React.FC = () => {
         }));
         setChemiItemsState(mapped);
       } catch (e) {
-        console.error("[TravelMainPage] /chemi/all fetch error:", e);
+        console.error("[TravelMainPage] /chemis/all fetch error:", e);
         setChemiItemsState([]);
       }
     })();
@@ -289,14 +289,14 @@ const TravelMainPage: React.FC = () => {
       try {
         setFeedsLoading(true);
         setFeedsError(null);
-        const res = await api.get<SpringPage<FeedResponse>>("/feed/all/paged", {
+        const res = await api.get<SpringPage<FeedResponse>>("/feeds/all/paged", {
           params: { page, size: 12 },
         });
         if (!mounted) return;
         setFeedPage(res.data);
       } catch (e) {
         if (!mounted) return;
-        console.error("[TravelMainPage] /feed/all/paged 에러:", e);
+        console.error("[TravelMainPage] /feeds/all/paged 에러:", e);
         setFeedPage({
           content: [],
           totalElements: 0,

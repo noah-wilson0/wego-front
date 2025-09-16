@@ -30,8 +30,8 @@ const Login: React.FC = () => {
     if (submitting) return;
     setSubmitting(true);
     try {
-      // ✅ 꼭 슬래시 포함: '/members/sign-in'
-      await api.post('/members/sign-in', {
+      // ✅ 꼭 슬래시 포함: '/auth/sign-in'
+      await api.post('/auth/sign-in', {
         username: email, // 서버는 username 필드 사용
         password,
       });

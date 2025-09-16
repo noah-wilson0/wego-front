@@ -114,7 +114,7 @@ const MainFeed: React.FC = () => {
       setError(null);
 
       try {
-        const res = await api.get<SpringPage<FeedResponse>>("/feed/all/paged", {
+        const res = await api.get<SpringPage<FeedResponse>>("/feeds/all/paged", {
           params: { page: nextPage, size },
         });
 

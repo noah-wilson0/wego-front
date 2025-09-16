@@ -113,7 +113,7 @@ const MyPageItinerary: React.FC = () => {
       setErrorMsg(null);
 
       const res = await axios.get<ServerTravelPlanDto[]>(
-        `http://localhost:8080/profile/travel-plans/all`,
+        `http://localhost:8080/me/travel-plans`,
         { 
           params: { status }, // query string으로 status 전달
           withCredentials: true // 쿠키(JWT) 포함

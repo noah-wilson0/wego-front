@@ -114,7 +114,7 @@ const FeedComments: React.FC<Props> = ({ feedId, pageSize = 20 }) => {
 
       try {
         const res = await api.get<SpringPage<CommentResponse>>(
-          `/feed/${feedId}/comments`,
+          `/feeds/${feedId}/comments`,
           { params: { page: nextPage, size: pageSize } }
         );
 
@@ -155,7 +155,7 @@ const FeedComments: React.FC<Props> = ({ feedId, pageSize = 20 }) => {
     const text = draft.trim();
     if (!text) return;
     try {
-      await api.post(`/feed/${feedId}/comments`,
+      await api.post(`/feeds/${feedId}/comments`,
         { parentId: null, comment: text },
         { headers: { "Content-Type": "application/json" } }
       );
@@ -177,7 +177,7 @@ const FeedComments: React.FC<Props> = ({ feedId, pageSize = 20 }) => {
     const text = (replyDraft[parentId] ?? "").trim();
     if (!text) return;
     try {
-      await api.post(`/feed/${feedId}/comments`,
+      await api.post(`/feeds/${feedId}/comments`,
         { parentId, comment: text },
         { headers: { "Content-Type": "application/json" } }
       );

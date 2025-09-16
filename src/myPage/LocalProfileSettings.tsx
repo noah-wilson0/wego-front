@@ -40,7 +40,7 @@ const LocalProfileSettings: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get<MemberDetailResponse>('/profile/me');
+        const res = await api.get<MemberDetailResponse>('/me');
         if (!mounted) return;
         const { username, name } = res.data || { username: '', name: '' };
         setDisplayName(name || '');
@@ -55,7 +55,7 @@ const LocalProfileSettings: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
-  // 현재 비밀번호 확인 (POST /members/check-password) — body: text/plain
+  // 현재 비밀번호 확인 (POST /me/check-password) — body: text/plain
   const handleVerifyCurrentPassword = async () => {
     if (!currentPassword) {
       setVerifiedCurrent(false);
@@ -64,7 +64,7 @@ const LocalProfileSettings: React.FC = () => {
     }
     try {
       setBusy(true);
-      await api.post('/members/check-password', currentPassword, {
+      await api.post('/me/check-password', currentPassword, {
         headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
       });
       setVerifiedCurrent(true);
@@ -77,7 +77,7 @@ const LocalProfileSettings: React.FC = () => {
     }
   };
 
-  // 비밀번호 변경 (POST /members/change-password)
+  // 비밀번호 변경 (POST /me/change-password)
   const handleChangePassword = async () => {
     if (!verifiedCurrent) {
       alert('현재 비밀번호 확인이 필요합니다.');
@@ -94,7 +94,7 @@ const LocalProfileSettings: React.FC = () => {
 
     try {
       setBusy(true);
-      await api.post('/members/change-password', {
+      await api.post('/me/change-password', {
         newPassword,
         confirmNewPassword: confirmPassword,
       });
@@ -113,12 +113,12 @@ const LocalProfileSettings: React.FC = () => {
     }
   };
 
-  // 회원 탈퇴 (DELETE /members)
+  // 회원 탈퇴 (DELETE /me)
   const handleWithdraw = async () => {
     if (!confirm('정말로 탈퇴하시겠어요? 이 작업은 되돌릴 수 없습니다.')) return;
     try {
       setBusy(true);
-      await api.delete('/members');
+      await api.delete('/me');
       alert('회원 탈퇴가 완료되었어요.');
       window.location.href = '/';
     } catch (err: any) {
@@ -129,11 +129,11 @@ const LocalProfileSettings: React.FC = () => {
     }
   };
 
-  // 닉네임 저장 (PATCH /members/change-info)
+  // 닉네임 저장 (PATCH /me/change-info)
   const handleSave = async () => {
     try {
       setBusy(true);
-      await api.patch('/members/change-info', { name: nickname });
+      await api.patch('/me/change-info', { name: nickname });
       setDisplayName(nickname);
       alert('프로필이 저장되었어요.');
     } catch (err: any) {

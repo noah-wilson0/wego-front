@@ -2,7 +2,7 @@
 // 서버 DTO들을 한곳에 모아두고 재사용합니다.
 
   
-  // ---------- Feed (GET /members/feed) ----------
+  // ---------- Feed (GET /me/feed) ----------
   export type FeedResponse = {
     feed_id: number;
     title: string;

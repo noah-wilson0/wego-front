@@ -54,7 +54,7 @@ const travelPlanPlace: React.FC = () => {
     const uuid = getUuidFromCookie();
     if (!uuid) return;
 
-    axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
+    axios.get(`http://localhost:8080/draft-plans/${uuid}/dates`)
       .then(res => {
         const { startDate, endDate } = res.data;
         if (startDate && endDate) {
@@ -98,9 +98,9 @@ const travelPlanPlace: React.FC = () => {
     try {
       const type = categoryMap[selectedCategory];
 
-      // ✅ 변경된 백엔드 엔드포인트로 호출: /travel_plan/place/{uuid}/{placeType}/paged
+      // ✅ 변경된 백엔드 엔드포인트로 호출: /draft-plans/{uuid}/{placeType}/paged
       const res = await axios.get(
-        `http://localhost:8080/travel_plan/place/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`
+        `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`
       );
 
       const newData: Place[] = res.data.content.map((item: any) => ({
@@ -160,7 +160,7 @@ const travelPlanPlace: React.FC = () => {
     const requestBody = selectedPlaces.map(place => ({ contentId: place.contentId }));
 
     try {
-      await axios.post(`http://localhost:8080/travel_plan/place/temp/schedule/${uuid}`, requestBody);
+      await axios.post(`http://localhost:8080/draft-plans/${uuid}/places`, requestBody);
       navigate('/accommodation');
     } catch (err) {
       alert('장소 선택 저장 실패');

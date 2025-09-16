@@ -125,7 +125,7 @@ const TravelFeedDetail: React.FC = () => {
       try {
         setLoading(true);
         setErrMsg(null);
-        const res = await axios.get<FeedResponse>(`http://localhost:8080/feed/${feedId}`, {
+        const res = await axios.get<FeedResponse>(`http://localhost:8080/feeds/${feedId}`, {
           withCredentials: true,
         });
         if (!mounted) return;

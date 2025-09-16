@@ -261,7 +261,7 @@ const TravelPlanCheck: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get(`/travel_plan/share/${token}`, { withCredentials: true });
+        const res = await api.get(`/travel-plans/${token}`, { withCredentials: true });
         const body: any = res.data;
         setTravelData(body as TravelData);
 
@@ -272,7 +272,7 @@ const TravelPlanCheck: React.FC = () => {
         setIsEditing(false);
         setIsDirty(false);
       } catch (err) {
-        logAxiosError(err, 'GET /travel_plan/share/{token} FAIL');
+        logAxiosError(err, 'GET /travel-plans//{token} FAIL');
         alert('유효하지 않은 공유 링크거나 만료되었습니다.');
         navigate('/', { replace: true });
       } finally {
@@ -285,7 +285,7 @@ const TravelPlanCheck: React.FC = () => {
   const fetchTravelData = useCallback(async (): Promise<TravelData> => {
     if (mode === 'edit') {
       if (!travelPlanId) throw new Error('MISSING_PLAN_ID');
-      const res = await api.get(`/travel_plan/member/schedule/${travelPlanId}`);
+      const res = await api.get(`/travel-plans/${travelPlanId}/me`);
       return res.data as TravelData;
     }
 
@@ -294,7 +294,7 @@ const TravelPlanCheck: React.FC = () => {
       console.error('[fetchTravelData] travelPlanUUID 쿠키가 없습니다.');
       throw new Error('MISSING_UUID');
     }
-    const tempRes = await api.get(`/travel_plan/temp/schedule/${uuid}`);
+    const tempRes = await api.get(`/draft-plans/${uuid}`);
     return tempRes.data as TravelData;
   }, [mode, travelPlanId]);
 
@@ -365,7 +365,7 @@ const TravelPlanCheck: React.FC = () => {
           alert('임시 여행 일정 정보(UUID)가 없습니다.');
           return;
         }
-        const res = await api.post(`/travel_plan/schedule/${uuid}`);
+        const res = await api.post(`/draft-plans/${uuid}`);
         if (res.status === 200) {
           Cookies.remove('travelPlanUUID');
           setShowSavedModal(true);
@@ -378,7 +378,7 @@ const TravelPlanCheck: React.FC = () => {
           alert('저장 정보를 찾을 수 없습니다.(planId 누락)');
           return;
         }
-        const res = await api.put(`/travel_plan/schedule/${id}`, travelData);
+        const res = await api.patch(`/draft-plans/${id}`, travelData);
         if (res.status === 200) {
           setIsDirty(false);
           setIsEditing(false);

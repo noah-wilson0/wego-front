@@ -138,7 +138,7 @@ const ChemiQuiz: React.FC = () => {
     (async () => {
       try {
         // ✅ 문자열을 text/plain으로 전송 (따옴표 문제 방지)
-        await api.post("/chemi/me", chemiParam, {
+        await api.post("/me/chemi", chemiParam, {
           headers: { "Content-Type": "text/plain" },
         });
         setChemiResult(chemiParam);
@@ -182,7 +182,7 @@ const ChemiQuiz: React.FC = () => {
       const compactNums = nextAnswers.filter((v): v is number => typeof v === "number");
       const payload = { answers: compactNums.map(String) }; // 서버 DTO: ChemiRequest(List<String> answers)
 
-      const chemiRes = await api.post<string>("/chemi/result", payload, {
+      const chemiRes = await api.post<string>("/chemis/result", payload, {
         headers: { "Content-Type": "application/json" },
         responseType: "text", // 서버가 String 반환
       });
@@ -197,7 +197,7 @@ const ChemiQuiz: React.FC = () => {
         // 로그인 상태 → 결과 저장
         try {
           // ✅ 문자열을 text/plain으로 전송 (따옴표 문제 방지)
-          await api.post("/chemi/me", result, {
+          await api.post("/me/chemi", result, {
             headers: { "Content-Type": "text/plain" },
           });
           setShowSavedModal(true);

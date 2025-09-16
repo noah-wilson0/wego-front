@@ -65,7 +65,7 @@ const travelPlanTime: React.FC = () => {
       setLoading(false);
       return;
     }
-    axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`)
+    axios.get(`http://localhost:8080/draft-plans/${uuid}/dates`)
       .then(res => {
         // res.data: { startDate: "2025-06-30", endDate: "2025-07-01" }
         const { startDate, endDate } = res.data;
@@ -110,7 +110,7 @@ const travelPlanTime: React.FC = () => {
     try {
       console.log({ travelDayTimes });
       await axios.post(
-        `http://localhost:8080/travel_plan/date/temp/schedule/times/${uuid}`,
+        `http://localhost:8080/draft-plans/${uuid}/times`,
         { travelDayTimes }
       );
       // alert('시간 설정이 저장되었습니다!');
@@ -130,7 +130,7 @@ const travelPlanTime: React.FC = () => {
       return;
     }
     try {
-      const res = await axios.get(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`);
+      const res = await axios.get(`http://localhost:8080/draft-plans/${uuid}/dates`);
       const { startDate, endDate } = res.data;
       setDateRange({
         from: startDate ? new Date(startDate) : undefined,
@@ -157,7 +157,7 @@ const travelPlanTime: React.FC = () => {
         startDate: format(dateRange.from, 'yyyy-MM-dd'),
         endDate: format(dateRange.to, 'yyyy-MM-dd')
       };
-      await axios.post(`http://localhost:8080/travel_plan/date/temp/schedule/${uuid}`, payload);
+      await axios.post(`http://localhost:8080daft-plans/${uuid}/dates`, payload);
       // scheduleData 새로 생성
       const days = eachDayOfInterval({
         start: dateRange.from,

@@ -231,8 +231,8 @@ const Settlement: React.FC<SettlementProps> = ({
 
   // 엔드포인트 빌더
   const basePath = isShare
-    ? `http://localhost:8080/travel_plan/settlements/share/${token}`
-    : `http://localhost:8080/travel_plan/settlements/${travelPlanId}`;
+    ? `http://localhost:8080/travel-share-plans/${token}/settlements`
+    : `http://localhost:8080/travel-plans/${travelPlanId}/settlements`;
   const url = (suffix = '') => `${basePath}${suffix}`;
 
   const [budget, setBudget] = useState<number>(initialBudget);

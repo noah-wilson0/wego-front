@@ -90,11 +90,11 @@ const MyPageChemi: React.FC = () => {
         setLoading(true);
         setErrMsg(null);
 
-        // 2) /chemi/me, /chemi/all, /chemi/similar 병렬 로딩
+        // 2) /me/chemi, /chemis/all, /chemis/similar 병렬 로딩
         const [meRes, allRes, simRes] = await Promise.all([
-          api.get<ChemiDto>('/chemi/me'),
-          api.get<ChemiListResponse>('/chemi/all'),
-          api.get<ChemiListResponse>('/chemi/similar'),
+          api.get<ChemiDto>('/me/chemi'),
+          api.get<ChemiListResponse>('/chemis/all'),
+          api.get<ChemiListResponse>('/chemis/similar'),
         ]);
 
         if (!mounted) return;
@@ -181,7 +181,7 @@ const MyPageChemi: React.FC = () => {
               </div>
             </div>
 
-            {/* 모든 케미 그리드 → /chemi/all */}
+            {/* 모든 케미 그리드 → /chemis/all */}
             <div className="mb-12">
               <div className="grid grid-cols-4 gap-4">
                 {loading
@@ -197,7 +197,7 @@ const MyPageChemi: React.FC = () => {
               </div>
             </div>
 
-            {/* 잘 어울리는 케미 → /chemi/similar */}
+            {/* 잘 어울리는 케미 → /chemis/similar */}
             <div>
               <h3 className="text-xl font-semibold mb-6">잘 어울리는 케미</h3>
               <div className="grid grid-cols-4 gap-4">
