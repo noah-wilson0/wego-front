@@ -1,89 +1,111 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Heart, Star, Plus, X } from 'lucide-react';
-import FourColumnLayout from './components/FourColumnLayout';
+import UnifiedFourColumnLayout from './components/UnifiedFourColumnLayout';
 import Cookies from 'js-cookie';
 import axios from 'axios';
+
+// meta API (공통)
+import { getDraftPlanMeta } from './components/draftPlanMetaApi';
+import type { DraftPlanMetaResponse } from './components/draftPlanMetaApi';
+
+import { resolveRegionView } from './components/regionMapView';
+import type { MapMarker } from './components/mapTypes';
 
 interface Place {
   contentId: string;
   name: string;
-  category: string;
-  description: string;
+  category: string;      // A01/A02/A03/B01
+  description: string;   // 주소
   rating: number;
   likes: number;
   imageUrl: string;
   isLiked: boolean;
+  longitude?: number;    // 지도용
+  latitude?: number;     // 지도용
 }
 
 interface TravelInfo {
-  destination: string;
-  duration: string;
-  totalDays: number;
+  destination: string;   // regionName
+  duration: string;      // "YYYY-MM-DD ~ YYYY-MM-DD"
+  totalDays: number;     // 총 일수(포함)
 }
 
 const categoryMap: Record<string, string> = {
   '장소': 'A01',
   '식당': 'A02',
   '카페': 'A03',
-  '숙박': 'B01'
 };
+
+// 카테고리 텍스트 스타일/라벨
+const CATEGORY_META: Record<string, { label: string; text: string }> = {
+  A01: { label: '명소',   text: 'text-blue-600' },
+  A02: { label: '음식점', text: 'text-red-600' },
+  A03: { label: '카페',   text: 'text-orange-600' },
+  B01: { label: '숙소',   text: 'text-purple-600' },
+};
+
+function CategoryTag({ code }: { code: string }) {
+  const meta = CATEGORY_META[code] ?? { label: '기타', text: 'text-gray-600' };
+  return <span className={`text-xs font-medium ${meta.text} mr-2 align-middle`}>{meta.label}</span>;
+}
 
 const travelPlanPlace: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('장소');
+  const [selectedCategory, setSelectedCategory] = useState<'장소' | '식당' | '카페'>('장소');
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlaces, setSelectedPlaces] = useState<Place[]>([]);
-  const [travelInfo, setTravelInfo] = useState<TravelInfo>({
-    destination: '',
-    duration: '',
-    totalDays: 0
-  });
+  const [travelInfo, setTravelInfo] = useState<TravelInfo>({ destination: '', duration: '', totalDays: 0 });
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
+
   const navigate = useNavigate();
   const observer = useRef<IntersectionObserver | null>(null);
-
-  const categories = ['장소', '식당', '카페', '숙박'];
-
+  const categories: Array<'장소'|'식당'|'카페'> = ['장소', '식당', '카페'];
   const getUuidFromCookie = () => Cookies.get('travelPlanUUID');
 
+  // 여행 meta 로드
   useEffect(() => {
     const uuid = getUuidFromCookie();
     if (!uuid) return;
 
-    axios.get(`http://localhost:8080/draft-plans/${uuid}/dates`)
-      .then(res => {
-        const { startDate, endDate } = res.data;
+    (async () => {
+      try {
+        const { regionName, startDate, endDate }: DraftPlanMetaResponse = await getDraftPlanMeta(uuid);
         if (startDate && endDate) {
           const start = new Date(startDate);
           const end = new Date(endDate);
           const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
           setTravelInfo({
-            // NOTE: 목적지 표시는 서버/슬러그 맵핑이 준비되면 교체해도 됨
-            destination: '제주',
+            destination: regionName,
             duration: `${startDate} ~ ${endDate}`,
-            totalDays: diffDays
+            totalDays: diffDays,
           });
+        } else {
+          setTravelInfo({ destination: regionName || '', duration: '', totalDays: 0 });
         }
-      })
-      .catch(err => console.error('❌ 여행 정보 불러오기 실패', err));
+      } catch (err) {
+        console.error('❌ 여행 meta 정보 불러오기 실패', err);
+      }
+    })();
   }, []);
 
-  // ✅ 카테고리 변경 시 목록 초기화 & 첫 페이지부터 다시 로드
+  // 카테고리 바뀌면 초기화
   useEffect(() => {
     setPlaces([]);
     setPage(0);
     setHasMore(true);
   }, [selectedCategory]);
 
-  // ✅ page/카테고리 변경되면 로드
+  // 페이지 로드
   useEffect(() => {
     loadPlaces();
-  }, [page, selectedCategory]); // areaSlug 의존성 제거
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, selectedCategory]);
 
   const loadPlaces = async () => {
     if (!hasMore || loading) return;
@@ -97,8 +119,6 @@ const travelPlanPlace: React.FC = () => {
     setLoading(true);
     try {
       const type = categoryMap[selectedCategory];
-
-      // ✅ 변경된 백엔드 엔드포인트로 호출: /draft-plans/{uuid}/{placeType}/paged
       const res = await axios.get(
         `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`
       );
@@ -108,10 +128,12 @@ const travelPlanPlace: React.FC = () => {
         name: item.title,
         category: item.placeType,
         description: item.addr || '',
-        rating: item.averageRating || 0,
-        likes: item.likeCount || 0,
+        rating: item.averageRating ?? 0,
+        likes: item.likeCount ?? 0,
         imageUrl: item.image || '/placeholder.jpg',
-        isLiked: false
+        isLiked: false,
+        longitude: item.longitude,
+        latitude: item.latitude,
       }));
 
       setPlaces(prev => [...prev, ...newData]);
@@ -128,28 +150,49 @@ const travelPlanPlace: React.FC = () => {
     if (observer.current) observer.current.disconnect();
 
     observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore) {
-        setPage(prev => prev + 1);
-      }
+      if (entries[0].isIntersecting && hasMore) setPage(prev => prev + 1);
     });
 
     if (node) observer.current.observe(node);
   }, [loading, hasMore]);
 
   const toggleLike = (placeId: string) => {
-    setPlaces(prev => prev.map(place => place.contentId === placeId ? { ...place, isLiked: !place.isLiked } : place));
+    setPlaces(prev =>
+      prev.map(place =>
+        place.contentId === placeId ? { ...place, isLiked: !place.isLiked } : place
+      )
+    );
   };
 
   const addPlace = (place: Place) => {
     if (!selectedPlaces.find(p => p.contentId === place.contentId)) {
       setSelectedPlaces(prev => [...prev, place]);
+      // setSelectedMarkerId(place.contentId); // 선택 시 마커 강조하려면 사용
     }
   };
 
   const removePlace = (placeId: string) => {
     setSelectedPlaces(prev => prev.filter(p => p.contentId !== placeId));
+    setSelectedMarkerId(prev => (prev === placeId ? null : prev));
   };
 
+  // ✅ 선택 목록이 바뀔 때 로컬에도 동일 스키마로 저장(카테고리 포함)
+  useEffect(() => {
+    const uuid = getUuidFromCookie();
+    if (!uuid) return;
+    const minimal = selectedPlaces.map(p => ({
+      id: p.contentId,
+      name: p.name,
+      addr: p.description,
+      lat: p.latitude,
+      lng: p.longitude,
+      imageUrl: p.imageUrl,
+      category: p.category as 'A01' | 'A02' | 'A03', // ★ 여기 중요!
+    }));
+    localStorage.setItem(`selectedPlaces:${uuid}`, JSON.stringify(minimal));
+  }, [selectedPlaces]);
+
+  // 저장 + 서버로 전송
   const handleNext = async () => {
     const uuid = getUuidFromCookie();
     if (!uuid) {
@@ -157,7 +200,7 @@ const travelPlanPlace: React.FC = () => {
       return;
     }
 
-    const requestBody = selectedPlaces.map(place => ({ contentId: place.contentId }));
+    const requestBody = selectedPlaces.map(p => ({ contentId: p.contentId }));
 
     try {
       await axios.post(`http://localhost:8080/draft-plans/${uuid}/places`, requestBody);
@@ -168,6 +211,27 @@ const travelPlanPlace: React.FC = () => {
     }
   };
 
+  // 지도 마커(선택한 장소만)
+  const mapMarkers: MapMarker[] = useMemo(() => {
+    return selectedPlaces
+      .filter(p => typeof p.latitude === 'number' && typeof p.longitude === 'number')
+      .map(p => ({
+        id: p.contentId,
+        title: p.name,
+        position: { lat: p.latitude as number, lng: p.longitude as number },
+        category: p.category as 'A01' | 'A02' | 'A03', // ✅ 명소/식당/카페
+        infoHtml: `
+          <div style="max-width:200px">
+            <div style="font-weight:600;margin-bottom:4px">${p.name}</div>
+            <div style="font-size:12px;color:#555">${p.description || ''}</div>
+          </div>
+        `,
+      }));
+  }, [selectedPlaces]);
+
+  // 지역 기본 뷰
+  const regionView = useMemo(() => resolveRegionView(travelInfo.destination), [travelInfo.destination]);
+
   const selectedPlacesComponent = (
     <div className="space-y-3">
       {selectedPlaces.length === 0 ? (
@@ -177,9 +241,7 @@ const travelPlanPlace: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="text-sm text-gray-600 mb-4">
-            총 {selectedPlaces.length}개 장소 선택됨
-          </div>
+          <div className="text-sm text-gray-600 mb-4">총 {selectedPlaces.length}개 장소 선택됨</div>
           {selectedPlaces.map((place, index) => (
             <div key={place.contentId} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
               <div className="flex items-start gap-3">
@@ -191,7 +253,10 @@ const travelPlanPlace: React.FC = () => {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{place.description}</p>
+                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                    <CategoryTag code={place.category} />
+                    <span className="align-middle">{place.description}</span>
+                  </p>
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                     <div className="flex items-center gap-1">
                       <Heart className={`w-3 h-3 ${place.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
@@ -215,10 +280,21 @@ const travelPlanPlace: React.FC = () => {
   );
 
   return (
-    <FourColumnLayout activeStep={3} setActiveStep={() => {}} onNext={handleNext} selectedPlaces={selectedPlacesComponent}>
+    <UnifiedFourColumnLayout
+      mode="place"
+      activeStep={3}
+      setActiveStep={() => {}}
+      onNext={handleNext}
+      selectedPanel={selectedPlacesComponent}
+      mapCenter={regionView.center}
+      mapZoom={regionView.zoom}
+      mapMarkers={mapMarkers}
+      selectedMarkerId={selectedMarkerId}
+      onMarkerClick={(id) => setSelectedMarkerId(id)}
+    >
       <div className="space-y-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">{travelInfo.destination}</h2>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">{travelInfo.destination || '여행지'}</h2>
           <div className="text-sm text-gray-600 space-y-1 mb-4">
             <div>{travelInfo.duration}</div>
             <div>총 여행 일: {travelInfo.totalDays > 1 ? `${travelInfo.totalDays - 1}박 ${travelInfo.totalDays}일` : '당일여행'}</div>
@@ -242,21 +318,20 @@ const travelPlanPlace: React.FC = () => {
 
         <div className="flex gap-2">
           {categories.map(category => (
-            <button key={category} onClick={() => setSelectedCategory(category)}
+            <button
+              key={category}
+              onClick={() => setSelectedCategory(category)}
               className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                selectedCategory === category
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}>
+                selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
               {category}
             </button>
           ))}
         </div>
 
         <div className="space-y-4">
-          {places.length === 0 && loading && (
-            <div className="text-center py-8">장소 데이터를 불러오는 중입니다...</div>
-          )}
+          {places.length === 0 && loading && <div className="text-center py-8">장소 데이터를 불러오는 중입니다...</div>}
           {places.map((place, index) => (
             <div
               key={place.contentId}
@@ -266,13 +341,14 @@ const travelPlanPlace: React.FC = () => {
               <img src={place.imageUrl} alt={place.name} className="w-20 h-20 object-cover rounded-lg" />
               <div className="flex-1">
                 <h4 className="font-semibold text-gray-800 mb-1">{place.name}</h4>
-                <p className="text-sm text-gray-600 mb-2">{place.description}</p>
+                <p className="text-sm text-gray-600 mb-2">
+                  <CategoryTag code={place.category} />
+                  <span className="align-middle">{place.description}</span>
+                </p>
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center gap-1">
                     <Heart
-                      className={`w-4 h-4 cursor-pointer transition-colors ${
-                        place.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'
-                      }`}
+                      className={`w-4 h-4 cursor-pointer transition-colors ${place.isLiked ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'}`}
                       onClick={() => toggleLike(place.contentId)}
                     />
                     <span className="text-gray-600">{place.likes}</span>
@@ -287,9 +363,7 @@ const travelPlanPlace: React.FC = () => {
                 onClick={() => addPlace(place)}
                 disabled={selectedPlaces.some(p => p.contentId === place.contentId)}
                 className={`flex-shrink-0 w-8 h-8 flex items-center justify-center border rounded-lg transition-colors ${
-                  selectedPlaces.some(p => p.contentId === place.contentId)
-                    ? 'border-green-500 bg-green-500 text-white'
-                    : 'border-gray-300 hover:bg-gray-50'
+                  selectedPlaces.some(p => p.contentId === place.contentId) ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 {selectedPlaces.some(p => p.contentId === place.contentId) ? (
@@ -302,7 +376,7 @@ const travelPlanPlace: React.FC = () => {
           ))}
         </div>
       </div>
-    </FourColumnLayout>
+    </UnifiedFourColumnLayout>
   );
 };
 

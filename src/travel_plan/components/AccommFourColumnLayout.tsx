@@ -9,7 +9,7 @@ interface FourColumnLayoutProps {
   setActiveStep: (step: number) => void;
   onNext?: () => void;
 
-  // ✅ 지도 props
+  /** 지도 props */
   mapCenter?: LatLng;
   mapZoom?: number;
   mapMarkers?: MapMarker[];
@@ -17,19 +17,18 @@ interface FourColumnLayoutProps {
   selectedMarkerId?: string | null;
 }
 
-const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
+const AccommFourColumnLayout: React.FC<FourColumnLayoutProps> = ({
   children,
   selectedPlaces,
   activeStep,
   setActiveStep,
   onNext,
 
-  // 지도 기본값: 서울 시청 근처
-  mapCenter = { lat: 37.5665, lng: 126.9780 },
+  mapCenter = { lat: 37.5665, lng: 126.9780 }, // 기본 서울
   mapZoom = 11,
   mapMarkers = [],
   onMarkerClick,
-  selectedMarkerId,
+  selectedMarkerId
 }) => {
   const [isPlacesPanelOpen, setIsPlacesPanelOpen] = useState(true);
 
@@ -67,29 +66,25 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
         {children}
       </div>
 
-      {/* 선택된 장소 탭 - 열림: 30%, 닫힘: 48px */}
-      <div
-        className={`${
-          isPlacesPanelOpen ? 'w-[30%]' : 'w-12'
-        } bg-white border-l border-r transition-all duration-300`}
-      >
+      {/* 선택된 숙소 탭 - 열림: 30%, 닫힘: 48px */}
+      <div className={`${isPlacesPanelOpen ? 'w-[30%]' : 'w-12'} bg-white border-l border-r transition-all duration-300`}>
         {isPlacesPanelOpen && (
           <div className="p-4 h-full">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold">선택된 장소</h2>
+              <h2 className="text-lg font-semibold">선택된 숙소</h2>
             </div>
             {selectedPlaces || (
               <div className="text-gray-500 text-center py-8">
-                <p>선택된 장소가 없습니다.</p>
+                <p>선택된 숙소가 없습니다.</p>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 오른쪽 지도 영역 */}
-      <div className="flex-1 relative">
-        {/* 탭 토글 버튼 */}
+      {/* 오른쪽 지도 영역 - 나머지 공간 차지 */}
+      <div className="flex-1 p-0 transition-all duration-300 relative">
+        {/* 토글 버튼 */}
         <button
           onClick={() => setIsPlacesPanelOpen(!isPlacesPanelOpen)}
           className="absolute top-1/2 left-0 transform -translate-y-1/2 bg-white border border-gray-300 w-6 h-20 flex items-center justify-center shadow-lg hover:bg-gray-50 rounded-lg z-50"
@@ -102,7 +97,7 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
             className="text-gray-400"
           >
             <path
-              d={isPlacesPanelOpen ? 'M15 18L9 12L15 6' : 'M9 18L15 12L9 6'}
+              d={isPlacesPanelOpen ? "M15 18L9 12L15 6" : "M9 18L15 12L9 6"}
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
@@ -111,17 +106,19 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
           </svg>
         </button>
 
-        {/* ✅ 실제 구글 지도 */}
-        <GoogleMapView
-          center={mapCenter}
-          zoom={mapZoom}
-          markers={mapMarkers}
-          onMarkerClick={onMarkerClick}
-          selectedMarkerId={selectedMarkerId ?? null}
-        />
+        {/* 구글 지도 */}
+        <div className="h-full w-full">
+          <GoogleMapView
+            center={mapCenter}
+            zoom={mapZoom}
+            markers={mapMarkers}
+            onMarkerClick={onMarkerClick}
+            selectedMarkerId={selectedMarkerId ?? null}
+          />
+        </div>
       </div>
     </div>
   );
 };
 
-export default FourColumnLayout;
+export default AccommFourColumnLayout;

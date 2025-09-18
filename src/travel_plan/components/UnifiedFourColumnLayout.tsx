@@ -1,15 +1,30 @@
+// src/travel_plan/components/UnifiedFourColumnLayout.tsx
 import React, { useState } from 'react';
 import GoogleMapView from './GoogleMapView';
 import type { LatLng, MapMarker } from './mapTypes';
 
-interface FourColumnLayoutProps {
+type Mode = 'place' | 'accommodation';
+
+interface UnifiedFourColumnLayoutProps {
+  /** 본문 컨텐츠(좌측 사이드바 옆 중앙 영역) */
   children: React.ReactNode;
-  selectedPlaces?: React.ReactNode;
+
+  /** 오른쪽 사이드 패널(선택된 항목들) */
+  selectedPanel?: React.ReactNode;
+
+  /** 진행 상태 표시 */
   activeStep: number;
   setActiveStep: (step: number) => void;
   onNext?: () => void;
 
-  // ✅ 지도 props
+  /** 어떤 화면인지(장소/숙소) */
+  mode: Mode;
+
+  /** 필요 시 타이틀/빈문구 오버라이드 */
+  panelTitleOverride?: string;
+  panelEmptyTextOverride?: string;
+
+  /** 지도 props (공통) */
   mapCenter?: LatLng;
   mapZoom?: number;
   mapMarkers?: MapMarker[];
@@ -17,21 +32,32 @@ interface FourColumnLayoutProps {
   selectedMarkerId?: string | null;
 }
 
-const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
+const UnifiedFourColumnLayout: React.FC<UnifiedFourColumnLayoutProps> = ({
   children,
-  selectedPlaces,
+  selectedPanel,
   activeStep,
   setActiveStep,
   onNext,
+  mode,
 
-  // 지도 기본값: 서울 시청 근처
-  mapCenter = { lat: 37.5665, lng: 126.9780 },
+  panelTitleOverride,
+  panelEmptyTextOverride,
+
+  mapCenter = { lat: 37.5665, lng: 126.9780 }, // 기본 서울
   mapZoom = 11,
   mapMarkers = [],
   onMarkerClick,
   selectedMarkerId,
 }) => {
-  const [isPlacesPanelOpen, setIsPlacesPanelOpen] = useState(true);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+
+  const panelTitle =
+    panelTitleOverride ??
+    (mode === 'place' ? '선택된 장소' : '선택된 숙소');
+
+  const emptyText =
+    panelEmptyTextOverride ??
+    (mode === 'place' ? '선택된 장소가 없습니다.' : '선택된 숙소가 없습니다.');
 
   return (
     <div className="flex h-screen">
@@ -67,20 +93,16 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
         {children}
       </div>
 
-      {/* 선택된 장소 탭 - 열림: 30%, 닫힘: 48px */}
-      <div
-        className={`${
-          isPlacesPanelOpen ? 'w-[30%]' : 'w-12'
-        } bg-white border-l border-r transition-all duration-300`}
-      >
-        {isPlacesPanelOpen && (
+      {/* 선택된 목록 패널 - 열림: 30%, 닫힘: 48px */}
+      <div className={`${isPanelOpen ? 'w-[30%]' : 'w-12'} bg-white border-l border-r transition-all duration-300`}>
+        {isPanelOpen && (
           <div className="p-4 h-full">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold">선택된 장소</h2>
+              <h2 className="text-lg font-semibold">{panelTitle}</h2>
             </div>
-            {selectedPlaces || (
+            {selectedPanel || (
               <div className="text-gray-500 text-center py-8">
-                <p>선택된 장소가 없습니다.</p>
+                <p>{emptyText}</p>
               </div>
             )}
           </div>
@@ -89,20 +111,14 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
 
       {/* 오른쪽 지도 영역 */}
       <div className="flex-1 relative">
-        {/* 탭 토글 버튼 */}
+        {/* 패널 토글 버튼 */}
         <button
-          onClick={() => setIsPlacesPanelOpen(!isPlacesPanelOpen)}
+          onClick={() => setIsPanelOpen(!isPanelOpen)}
           className="absolute top-1/2 left-0 transform -translate-y-1/2 bg-white border border-gray-300 w-6 h-20 flex items-center justify-center shadow-lg hover:bg-gray-50 rounded-lg z-50"
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="text-gray-400"
-          >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-gray-400">
             <path
-              d={isPlacesPanelOpen ? 'M15 18L9 12L15 6' : 'M9 18L15 12L9 6'}
+              d={isPanelOpen ? 'M15 18L9 12L15 6' : 'M9 18L15 12L9 6'}
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
@@ -111,7 +127,7 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
           </svg>
         </button>
 
-        {/* ✅ 실제 구글 지도 */}
+        {/* 구글 지도 */}
         <GoogleMapView
           center={mapCenter}
           zoom={mapZoom}
@@ -124,4 +140,4 @@ const FourColumnLayout: React.FC<FourColumnLayoutProps> = ({
   );
 };
 
-export default FourColumnLayout;
+export default UnifiedFourColumnLayout;
