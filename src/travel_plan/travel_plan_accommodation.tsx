@@ -1,3 +1,4 @@
+// src/travel_plan/travel_plan_accommodation.tsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Search, Plus, Trash2, RotateCcw, Heart, Star } from "lucide-react";
 import Cookies from "js-cookie";
@@ -13,6 +14,8 @@ import type { MapMarker } from "./components/mapTypes";
 
 import AccommodationSelectModal from "./components/AccommodationSelectModal";
 import type { Accommodation } from "./components/AccommodationSelectModal";
+
+import TravelPlanRoute from "./travel_plan_route";
 
 import { addDays, differenceInCalendarDays, format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -40,10 +43,10 @@ type MinimalPlace = {
   lat?: number | null;
   lng?: number | null;
   imageUrl?: string;
-  category?: 'A01' | 'A02' | 'A03'; // ✅ 카테고리 포함!
+  category?: "A01" | "A02" | "A03"; // 명소/식당/카페
 };
 
-// 카테고리 라벨
+// 카테고리 라벨(숙소 고정)
 const CategoryTag = () => (
   <span className="mr-2 align-middle text-xs font-medium text-red-600">숙소</span>
 );
@@ -73,6 +76,10 @@ const TravelPlanAccommodation: React.FC = () => {
 
   // 장소 선택(이전 단계) 결과
   const [savedPlaces, setSavedPlaces] = useState<MinimalPlace[]>([]);
+
+  // 진행 제어/모달
+  const [showRoutePopup, setShowRoutePopup] = useState(false);
+  const [showValidationError, setShowValidationError] = useState(false);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const getUuidFromCookie = () => Cookies.get("travelPlanUUID");
@@ -127,13 +134,12 @@ const TravelPlanAccommodation: React.FC = () => {
             lat: p.latitude,
             lng: p.longitude,
             imageUrl: p.image,
-            category: p.placeType as 'A01' | 'A02' | 'A03', // ✅ 서버에서 실어오기
+            category: p.placeType as "A01" | "A02" | "A03",
           }));
           setSavedPlaces(list);
         } catch {
           const raw = localStorage.getItem(`selectedPlaces:${uuid}`);
           if (raw) {
-            // 로컬에도 category 포함 저장하도록 place 페이지에서 수정함
             setSavedPlaces(JSON.parse(raw));
           }
         }
@@ -222,9 +228,14 @@ const TravelPlanAccommodation: React.FC = () => {
   };
 
   // 오른쪽 패널 유틸
-  const resetAll = () => setSelectedByNight(Array(travelInfo.nights).fill(null));
-  const removeNight = (idx: number) =>
+  const resetAll = () => {
+    setSelectedByNight(Array(travelInfo.nights).fill(null));
+    setShowValidationError(false);
+  };
+  const removeNight = (idx: number) => {
     setSelectedByNight((prev) => prev.map((v, i) => (i === idx ? null : v)));
+    setShowValidationError(false);
+  };
 
   // 한 박의 구간 텍스트
   const renderNightRange = (idx: number) => {
@@ -243,48 +254,54 @@ const TravelPlanAccommodation: React.FC = () => {
     [travelInfo.destination]
   );
 
-  // 선택된 숙소 마커(보라색)
+  // 선택된 숙소 마커(보라색) — order 전달(숫자는 표시하지 않고 아이콘만 사용)
   const accommodationMarkers: MapMarker[] = useMemo(() => {
     const idToCoord = new Map(
-      accommodations.map(a => [a.id, { lat: a.latitude, lng: a.longitude, name: a.name, addr: a.addr }])
+      accommodations.map((a) => [
+        a.id,
+        { lat: a.latitude, lng: a.longitude, name: a.name, addr: a.addr },
+      ])
     );
 
     return selectedByNight
-      .filter(Boolean)
-      .map(sel => sel as Accommodation)
-      .map(sel => {
-        const meta = idToCoord.get(sel.id);
-        return meta && typeof meta.lat === 'number' && typeof meta.lng === 'number'
-          ? {
-              id: `acc-${sel.id}`,
+      .map((sel, idx) => ({ sel, idx }))
+      .filter(({ sel }) => !!sel)
+      .map(({ sel, idx }) => {
+        const s = sel as Accommodation;
+        const meta = idToCoord.get(s.id);
+        return meta && typeof meta.lat === "number" && typeof meta.lng === "number"
+          ? ({
+              id: `acc-${s.id}`,
               title: meta.name,
               position: { lat: meta.lat as number, lng: meta.lng as number },
-              category: 'B01', // ✅ 숙소 = 보라색
+              category: "B01",
+              order: idx + 1, // 전달만(숫자 렌더링은 Map에서 아이콘 처리)
               infoHtml: `
                 <div style="max-width:200px">
                   <div style="font-weight:600;margin-bottom:4px">${meta.name}</div>
-                  <div style="font-size:12px;color:#555">${meta.addr || ''}</div>
+                  <div style="font-size:12px;color:#555">${meta.addr || ""}</div>
                 </div>
               `,
-            } as MapMarker
+            } as MapMarker)
           : null;
       })
       .filter((m): m is MapMarker => !!m);
   }, [selectedByNight, accommodations]);
 
-  // 이전 단계에서 고른 장소 마커(카테고리 반영)
+  // 이전 단계에서 고른 장소 마커(카테고리 반영) + 선택 순서(order) 유지
   const placeMarkers: MapMarker[] = useMemo(() => {
     return savedPlaces
-      .filter(p => typeof p.lat === 'number' && typeof p.lng === 'number')
-      .map(p => ({
+      .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
+      .map((p, idx) => ({
         id: `place-${p.id}`,
         title: p.name,
         position: { lat: p.lat as number, lng: p.lng as number },
-        category: (p.category ?? 'A01') as 'A01' | 'A02' | 'A03', // ✅ 색 유지!
+        category: (p.category ?? "A01") as "A01" | "A02" | "A03",
+        order: idx + 1, // 선택 순서 번호(1..N)
         infoHtml: `
           <div style="max-width:200px">
             <div style="font-weight:600;margin-bottom:4px">${p.name}</div>
-            <div style="font-size:12px;color:#555">${p.addr || ''}</div>
+            <div style="font-size:12px;color:#555">${p.addr || ""}</div>
           </div>
         `,
       }));
@@ -295,9 +312,59 @@ const TravelPlanAccommodation: React.FC = () => {
     return [...placeMarkers, ...accommodationMarkers];
   }, [placeMarkers, accommodationMarkers]);
 
+  // ✅ 다음 버튼: 모든 Night 채움 검증 + 서버 저장 + 라우트 모달
+  const handleNext = async () => {
+    const allFilled =
+      selectedByNight.length === travelInfo.nights && selectedByNight.every(Boolean);
+
+    if (!allFilled) {
+      setShowValidationError(true);
+      return;
+    }
+
+    const uuid = getUuidFromCookie();
+    if (!uuid) {
+      alert("UUID가 없습니다.");
+      return;
+    }
+
+    try {
+      // Night 수만큼 날짜 배열 생성 (체크인 기준)
+      const dates: string[] = [];
+      const base = new Date(travelInfo.startDate);
+      for (let i = 0; i < travelInfo.nights; i++) {
+        const d = addDays(base, i);
+        dates.push(d.toISOString().split("T")[0]);
+      }
+
+      // 각 Night에 선택된 숙소 id 매핑
+      const requestBody = dates.map((date, idx) => ({
+        date,
+        contentId: (selectedByNight[idx] as Accommodation).id,
+      }));
+
+      await axios.post(
+        `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/accommodations`,
+        requestBody
+      );
+
+      setShowValidationError(false);
+      setShowRoutePopup(true);
+    } catch (err) {
+      alert("숙소 선택 저장 실패");
+      console.error(err);
+    }
+  };
+
   // 선택된 숙소 패널
   const SelectedPanel = (
     <div className="space-y-4">
+      {showValidationError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          일정에 모든 Night의 숙소를 지정해 주세요.
+        </div>
+      )}
+
       <div className="flex items-center justify-end text-sm">
         <button
           onClick={resetAll}
@@ -315,13 +382,18 @@ const TravelPlanAccommodation: React.FC = () => {
 
         {Array.from({ length: travelInfo.nights }).map((_, idx) => {
           const sel = selectedByNight[idx];
+          const highlightEmpty = showValidationError && !sel;
           return (
             <div key={idx} className="flex items-start gap-3">
               <div className="mt-3 flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs text-gray-700">
                 {idx + 1}
               </div>
 
-              <div className="flex-1 rounded-xl border p-3 transition hover:shadow-sm">
+              <div
+                className={`flex-1 rounded-xl border p-3 transition hover:shadow-sm ${
+                  highlightEmpty ? "border-red-300" : "border-gray-200"
+                }`}
+              >
                 <div className="mb-2 text-xs text-gray-400">{renderNightRange(idx)}</div>
 
                 {sel ? (
@@ -388,9 +460,8 @@ const TravelPlanAccommodation: React.FC = () => {
         mode="accommodation"
         activeStep={4}
         setActiveStep={() => {}}
-        onNext={() => {}}
+        onNext={handleNext}
         selectedPanel={SelectedPanel}
-        // 지도 전달: 지역 기본 뷰 + 장소/숙소 마커 모두
         mapCenter={regionView.center}
         mapZoom={regionView.zoom}
         mapMarkers={allMarkers}
@@ -481,9 +552,19 @@ const TravelPlanAccommodation: React.FC = () => {
         onClose={() => setModalOpen(false)}
         slotCount={travelInfo.nights}
         selected={selectedByNight}
-        onChange={setSelectedByNight}
+        onChange={(arr) => {
+          setSelectedByNight(arr);
+          if (arr.every(Boolean)) setShowValidationError(false);
+        }}
         currentAccommodation={currentAccommodation}
       />
+
+      {/* 라우트 설정 모달 */}
+      {showRoutePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <TravelPlanRoute onClose={() => setShowRoutePopup(false)} />
+        </div>
+      )}
     </>
   );
 };

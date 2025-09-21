@@ -211,15 +211,16 @@ const travelPlanPlace: React.FC = () => {
     }
   };
 
-  // 지도 마커(선택한 장소만)
+  // ✅ 지도 마커(선택한 장소만) — 순번(sequence) 추가
   const mapMarkers: MapMarker[] = useMemo(() => {
     return selectedPlaces
       .filter(p => typeof p.latitude === 'number' && typeof p.longitude === 'number')
-      .map(p => ({
+      .map((p, idx) => ({
         id: p.contentId,
         title: p.name,
         position: { lat: p.latitude as number, lng: p.longitude as number },
-        category: p.category as 'A01' | 'A02' | 'A03', // ✅ 명소/식당/카페
+        category: p.category as 'A01' | 'A02' | 'A03',
+        order: idx + 1, // ← 순번 추가
         infoHtml: `
           <div style="max-width:200px">
             <div style="font-weight:600;margin-bottom:4px">${p.name}</div>

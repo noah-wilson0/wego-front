@@ -1,228 +1,73 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { SingleTimelineItem } from './components/TimelineIcon';
-import TravelPlanSavedModal from './components/travelPlanSavedModal';
+// src/travel_plan/travel_plan_check.tsx
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { SingleTimelineItem } from './components/TimelineIcon';
 import Settlement from './components/Settlement';
+import TravelPlanSavedModal from './components/travelPlanSavedModal';
+import FullCheckColumnLayout from './components/FullCheckColumnLayout';
+import type { MapMarker, MapPolyline, LatLng } from './components/mapTypes';
 
-/* axios */
+/** axios */
 const api = axios.create({
   baseURL: 'http://localhost:8080',
   withCredentials: true,
 });
 
-/* 에러 로거 */
-const logAxiosError = (err: unknown, label: string) => {
-  if (axios.isAxiosError(err)) {
-    console.error(`[${label}] status=`, err.response?.status, 'data=', err.response?.data);
-  } else {
-    console.error(`[${label}]`, err);
-  }
-};
+/** 타입 (Draft/회원/공유 공통 필드만 사용) */
+type Mode = 'create' | 'edit';
 
-/* 레이아웃 (이 파일 안에서 정의하는 버전) */
-interface FullCheckColumnLayoutProps {
-  children: React.ReactNode;
-  settlementContent?: React.ReactNode;
-  mapContent?: React.ReactNode;
-  settlementHeaderRight?: React.ReactNode; // ✅ 오른쪽 버튼
-  activeStep: number;
-  setActiveStep: (step: number) => void;
-  onNext?: () => void;
-  isMainPanelOpen: boolean;
-  setIsMainPanelOpen: (open: boolean) => void;
-  selectedDay: number | 'all';
-  setSelectedDay: (day: number | 'all') => void;
-  totalDays: number;
-  onEdit?: () => void;
-  onSave?: () => void;
-  isEditing?: boolean;
-  canSave?: boolean;
-  editDisabled?: boolean;
-}
-const FullCheckColumnLayout: React.FC<FullCheckColumnLayoutProps> = ({
-  children,
-  settlementContent,
-  mapContent,
-  settlementHeaderRight,
-  isMainPanelOpen,
-  setIsMainPanelOpen,
-  selectedDay,
-  setSelectedDay,
-  totalDays,
-  onEdit,
-  onSave,
-  isEditing = false,
-  canSave = false,
-  editDisabled = false,
-}) => {
-  return (
-    <div className="flex h-screen">
-      {/* 왼쪽 사이드바 */}
-      <aside className="w-[125px] bg-white p-6 flex flex-col justify-between">
-        <div>
-          <div className="text-2xl font-bold mb-10">LOGO</div>
-          <nav className="flex flex-col gap-4 text-sm">
-            <button
-              onClick={() => setSelectedDay('all')}
-              className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
-                selectedDay === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-              }`}
-            >
-              전체
-            </button>
-
-            {Array.from({ length: totalDays }, (_, index) => {
-              const day = index + 1;
-              return (
-                <button
-                  key={day}
-                  onClick={() => setSelectedDay(day)}
-                  className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
-                    selectedDay === day ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                  }`}
-                >
-                  {day}일차
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <button
-            disabled={editDisabled}
-            className={`py-2 px-4 rounded-md text-base transition-colors ${
-              editDisabled
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : isEditing
-                ? 'bg-gray-800 text-white hover:bg-black'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
-            onClick={onEdit}
-          >
-            {isEditing ? '편집 종료' : '편집'}
-          </button>
-          <button
-            disabled={!canSave}
-            className={`py-2 px-4 rounded-md text-base transition-colors ${
-              canSave ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-red-100 text-red-300 cursor-not-allowed'
-            }`}
-            onClick={onSave}
-          >
-            저장
-          </button>
-        </div>
-      </aside>
-
-      {/* 가운데 본문 */}
-      <div className={`${isMainPanelOpen ? 'w-[65%]' : 'w-[35%]'} transition-all duration-300 p-4 h-full flex flex-col relative`}>
-        <button
-          onClick={() => setIsMainPanelOpen(!isMainPanelOpen)}
-          className="absolute top-1/2 right-0 transform -translate-y-1/2 translate-x-1/2 bg-white border border-gray-300 w-6 h-20 flex items-center justify-center shadow-lg hover:bg-gray-50 rounded-lg z-50"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-gray-400">
-            <path
-              d={isMainPanelOpen ? 'M15 18L9 12L15 6' : 'M9 18L15 12L9 6'}
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-
-        <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          <style>{`div::-webkit-scrollbar{display:none}`}</style>
-          <div className="min-w-max h-full">{children}</div>
-        </div>
-      </div>
-
-      {/* 오른쪽: 지도/정산 */}
-      <div className={`${isMainPanelOpen ? 'flex-1' : 'w-[65%]'} transition-all duration-300 relative flex flex-col`}>
-        <div className="h-1/2 bg-gray-200 p-4 transition-all duration-300">
-          <div className="h-full bg-white rounded shadow-sm">
-            {mapContent || (
-              <div className="h-full flex flex-col items-center justify-center">
-                <h3 className="text-lg font-medium mb-2">지도 영역</h3>
-                <p className="text-gray-600">지도 API 연동 예정</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="h-1/2 bg-white border-t transition-all duration-300 relative flex-shrink-0">
-          <div className="p-4 h-full pt-8 overflow-auto">
-            {/* ✅ ‘정산하기’ 타이틀은 여기에서만 렌더 */}
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">정산하기</h2>
-              {settlementHeaderRight}
-            </div>
-
-            <div className="h-full">
-              {settlementContent || <div className="text-gray-500 text-center py-8">정산 내역이 없습니다.</div>}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* 타입들 */
 interface Place {
   content_id: string;
-  place_type: string;
+  placeType: 'A01' | 'A02' | 'A03' | 'B01';
   title: string;
   image: string;
   sequence: number;
-  start_time: string;
-  end_time: string;
+  longitude: number; // 서버 제공
+  latitude: number;  // 서버 제공
+  start_time: string; // "HH:mm" or "HH:mm:ss"
+  end_time: string;   // "HH:mm" or "HH:mm:ss"
 }
 interface Accommodation {
   content_id: string;
-  place_type: string;
+  placeType: 'B01';
   title: string;
   image: string;
   sequence: number;
+  longitude: number;
+  latitude: number;
   start_time: string;
   end_time: string;
 }
 interface DaySchedule {
-  date: string;
-  start_time: string;
-  end_time: string;
+  date: string;       // "yyyy-MM-dd"
+  start_time: string; // "HH:mm" or "HH:mm:ss"
+  end_time: string;   // "HH:mm" or "HH:mm:ss"
   places: Place[];
   accommodation: Accommodation | null;
 }
-interface Route {
+interface RouteDetail {
   sequence: number;
-  origin: string;
-  destination: string;
-  taxiFare?: number;
-  distance?: number;
-  duration: number;
+  origin: string;      // content_id
+  destination: string; // content_id
+  duration: number;    // seconds
 }
-interface DayRoute {
-  [date: string]: Route[];
-}
-interface RouteData {
-  route_type: string;
-  daily_route: DayRoute;
+interface RouteInfo {
+  route_type: string | null;
+  daily_route: Record<string, RouteDetail[]>; // key: "yyyy-MM-dd"
 }
 interface TravelData {
+  // draft에는 slug가 있고, 회원/공유에는 createdAt이 있을 수 있지만
+  // 화면에서는 start/end/days/routes만 사용하므로 공통만 둡니다.
   start_date: string;
   end_date: string;
   days: DaySchedule[];
-  routes: RouteData[];
+  routes: RouteInfo[];
 }
 
-/* 유틸 */
+/** 유틸 */
 const formatDuration = (seconds: number): string => `${Math.round(seconds / 60)}분`;
-
-/* 메인 */
-type Mode = 'create' | 'edit';
 
 const TravelPlanCheck: React.FC = () => {
   const navigate = useNavigate();
@@ -232,99 +77,58 @@ const TravelPlanCheck: React.FC = () => {
 
   const mode: Mode = travelPlanId ? 'edit' : 'create';
 
-  const [activeStep, setActiveStep] = useState(3);
-  const [isMainPanelOpen, setIsMainPanelOpen] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
   const [travelData, setTravelData] = useState<TravelData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [sharePlanId, setSharePlanId] = useState<string | null>(null);
-  const shareMode = !!token || !!sharePlanId;
-
-  const [isEditing, setIsEditing] = useState(mode === 'create');
-  const [isDirty, setIsDirty] = useState(mode === 'create');
-  const [showSavedModal, setShowSavedModal] = useState(false);
-
-  // 정산 접근 권한
   const [isAuthForSettlement, setIsAuthForSettlement] = useState<boolean>(false);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+  const [showSavedModal, setShowSavedModal] = useState(false);
 
-  const redirectToLogin = () => {
-    const redirect = encodeURIComponent(location.pathname + location.search);
-    navigate(`/login?redirect=${redirect}`);
-  };
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
 
-  /* 공유 토큰 진입 */
+  /** 여행 데이터 로드(임시/Draft, 회원/공유) */
   useEffect(() => {
-    if (!token) return;
-
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get(`/travel-plans/${token}`, { withCredentials: true });
-        const body: any = res.data;
-        setTravelData(body as TravelData);
+        let data: TravelData;
 
-        const pid = body?.travel_plan_id ?? body?.travelPlanId ?? body?.planId ?? body?.id ?? null;
-        if (pid) setSharePlanId(String(pid));
-        else console.warn('[share] planId not found in TravelPlanResponse.');
+        if (token) {
+          // 공유 일정
+          const res = await api.get(`/travel-plans/${token}`, { withCredentials: true });
+          data = res.data as TravelData;
+        } else if (travelPlanId) {
+          // 회원 본인 일정
+          const res = await api.get(`/travel-plans/${travelPlanId}/me`);
+          data = res.data as TravelData;
+        } else {
+          // 임시(Draft) 일정
+          const uuid = Cookies.get('travelPlanUUID');
+          if (!uuid) throw new Error('MISSING_UUID');
+          const tempRes = await api.get(`/draft-plans/${uuid}`);
+          data = tempRes.data as TravelData;
+        }
 
-        setIsEditing(false);
-        setIsDirty(false);
-      } catch (err) {
-        logAxiosError(err, 'GET /travel-plans//{token} FAIL');
-        alert('유효하지 않은 공유 링크거나 만료되었습니다.');
-        navigate('/', { replace: true });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [token, navigate]);
-
-  /* 기존 데이터 로드 */
-  const fetchTravelData = useCallback(async (): Promise<TravelData> => {
-    if (mode === 'edit') {
-      if (!travelPlanId) throw new Error('MISSING_PLAN_ID');
-      const res = await api.get(`/travel-plans/${travelPlanId}/me`);
-      return res.data as TravelData;
-    }
-
-    const uuid = Cookies.get('travelPlanUUID');
-    if (!uuid) {
-      console.error('[fetchTravelData] travelPlanUUID 쿠키가 없습니다.');
-      throw new Error('MISSING_UUID');
-    }
-    const tempRes = await api.get(`/draft-plans/${uuid}`);
-    return tempRes.data as TravelData;
-  }, [mode, travelPlanId]);
-
-  useEffect(() => {
-    if (token) return;
-
-    (async () => {
-      try {
-        setLoading(true);
-        const data = await fetchTravelData();
         setTravelData(data);
       } catch (e: any) {
+        console.error('[TravelPlanCheck] load fail', e);
         if (e?.message === 'MISSING_UUID') navigate('/', { replace: true });
-        else alert('여행 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        else alert('여행 데이터를 불러오지 못했습니다.');
       } finally {
         setLoading(false);
       }
     })();
-  }, [token, fetchTravelData, navigate]);
+  }, [token, travelPlanId, navigate]);
 
-  /* 정산 권한 확인 */
+  /** 정산 권한 */
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const res = await api.get('/auth/me', { withCredentials: true });
-        console.log('auth/me status:', res.status);
+        await api.get('/auth/me', { withCredentials: true });
         if (mounted) setIsAuthForSettlement(true);
-      } catch (err: any) {
-        console.log('auth/me status:', err?.response?.status);
+      } catch {
         if (mounted) setIsAuthForSettlement(false);
       } finally {
         if (mounted) setAuthChecked(true);
@@ -335,125 +139,298 @@ const TravelPlanCheck: React.FC = () => {
     };
   }, []);
 
-  /* 편집/저장 */
-  const handleEdit = () => {
-    setIsEditing((v) => !v);
-    if (!isEditing) setIsDirty(false);
-  };
-  const markDirty = () => {
-    if (!isEditing) return;
-    setIsDirty(true);
-  };
-  const handleSave = async () => {
-    if (!travelData) return;
+  /** content_id -> 좌표 lookup (서버에서 위경도 제공) */
+  const idToCoord = useMemo(() => {
+    if (!travelData) return {} as Record<string, { lat: number; lng: number; title?: string }>;
+    const map: Record<string, { lat: number; lng: number; title?: string }> = {};
 
-    if (!shareMode) {
-      try {
-        await api.get('/auth/me');
-      } catch (err) {
-        logAxiosError(err, 'auth/me FAIL → redirect to login');
-        const redirect = encodeURIComponent(location.pathname + location.search);
-        navigate(`/login?redirect=${redirect}`);
-        return;
+    travelData.days.forEach((d) => {
+      d.places.forEach((p) => {
+        map[p.content_id] = { lat: p.latitude, lng: p.longitude, title: p.title };
+      });
+      if (d.accommodation) {
+        map[d.accommodation.content_id] = {
+          lat: d.accommodation.latitude,
+          lng: d.accommodation.longitude,
+          title: d.accommodation.title,
+        };
       }
-    }
+    });
+    return map;
+  }, [travelData]);
 
-    try {
-      if (mode === 'create' && !shareMode) {
-        const uuid = Cookies.get('travelPlanUUID');
-        if (!uuid) {
-          alert('임시 여행 일정 정보(UUID)가 없습니다.');
-          return;
-        }
-        const res = await api.post(`/draft-plans/${uuid}`);
-        if (res.status === 200) {
-          Cookies.remove('travelPlanUUID');
-          setShowSavedModal(true);
-        } else {
-          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-        }
-      } else {
-        const id = travelPlanId ?? sharePlanId;
-        if (!id) {
-          alert('저장 정보를 찾을 수 없습니다.(planId 누락)');
-          return;
-        }
-        const res = await api.patch(`/draft-plans/${id}`, travelData);
-        if (res.status === 200) {
-          setIsDirty(false);
-          setIsEditing(false);
-          setShowSavedModal(true);
-        } else {
-          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+  /** 지도용 마커 계산 */
+  const mapMarkers: MapMarker[] = useMemo(() => {
+    if (!travelData) return [];
+    const markers: MapMarker[] = [];
+
+    const dayFilter = (date: string, dayIndex: number) => {
+      if (selectedDay === 'all') return true;
+      return selectedDay === dayIndex + 1;
+    };
+
+    travelData.days.forEach((day, dayIdx) => {
+      if (!dayFilter(day.date, dayIdx)) return;
+
+      // 장소
+      day.places.forEach((p, idx) => {
+        if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
+        markers.push({
+          id: `place-${day.date}-${p.content_id}`,
+          position: { lat: p.latitude, lng: p.longitude },
+          title: p.title,
+          category: p.placeType,
+          order: idx + 1,
+          infoHtml: `<div>${p.start_time} ~ ${p.end_time}</div>`,
+        });
+      });
+
+      // 숙소
+      if (day.accommodation) {
+        const a = day.accommodation;
+        if (typeof a.latitude === 'number' && typeof a.longitude === 'number') {
+          markers.push({
+            id: `acc-${day.date}-${a.content_id}`,
+            position: { lat: a.latitude, lng: a.longitude },
+            title: a.title,
+            category: 'B01',
+            infoHtml: `<div>${a.start_time} ~ ${a.end_time} • 숙소</div>`,
+          });
         }
       }
-    } catch (e) {
-      logAxiosError(e, 'save FAIL');
-      alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-    }
-  };
+    });
 
-  /* 타입/색상 매핑 */
-  const getPlaceTypeInfo = (placeType: string) => {
-    switch (placeType) {
-      case 'A01':
-        return { color: 'bg-blue-500', textColor: 'text-blue-500', label: '명소' };
-      case 'A02':
-        return { color: 'bg-red-500', textColor: 'text-red-500', label: '음식점' };
-      case 'A03':
-        return { color: 'bg-red-500', textColor: 'text-red-500', label: '카페' };
-      case 'B01':
-        return { color: 'bg-gray-500', textColor: 'text-gray-500', label: '숙소' };
-      default:
-        return { color: 'bg-gray-400', textColor: 'text-gray-400', label: '기타' };
-    }
-  };
+    return markers;
+  }, [travelData, selectedDay]);
 
-  const createTimelineItems = (dayData: DaySchedule, routes: Route[]) => {
-    const items: Array<{
-      id: string;
-      title: string;
-      image: string;
-      time: string;
-      placeType: 'A01' | 'A02' | 'A03' | 'B01';
-      duration?: string;
-    }> = [];
+  /** 지도용 경로(폴리라인) 계산 */
+  const polylines: MapPolyline[] = useMemo(() => {
+    if (!travelData) return [];
+    const lines: MapPolyline[] = [];
 
-    dayData.places.forEach((p) => {
-      const route = routes.find((r) => r.origin === p.content_id);
-      items.push({
-        id: p.content_id,
-        title: p.title,
-        image: p.image,
-        time: `${p.start_time}~${p.end_time}`,
-        placeType: p.place_type as 'A01' | 'A02' | 'A03' | 'B01',
-        duration: route ? formatDuration(route.duration) : undefined,
+    const dayFilter = (date: string, dayIndex: number) => {
+      if (selectedDay === 'all') return true;
+      return selectedDay === dayIndex + 1;
+    };
+
+    travelData.routes.forEach((routeInfo) => {
+      Object.entries(routeInfo.daily_route || {}).forEach(([date, arr]) => {
+        const dayIndex = travelData.days.findIndex((d) => d.date === date);
+        if (dayIndex === -1 || !dayFilter(date, dayIndex)) return;
+
+        arr.forEach((rd) => {
+          const o = idToCoord[rd.origin];
+          const d = idToCoord[rd.destination];
+          if (!o || !d) return;
+          lines.push({
+            id: `route-${date}-${rd.sequence}`,
+            path: [
+              { lat: o.lat, lng: o.lng },
+              { lat: d.lat, lng: d.lng },
+            ],
+            options: { strokeColor: '#7c3aed' },
+          });
+        });
       });
     });
 
-    if (dayData.accommodation) {
-      const a = dayData.accommodation;
-      items.push({
-        id: a.content_id,
-        title: a.title,
-        image: a.image,
-        time: `${a.start_time}~${a.end_time}`,
-        placeType: a.place_type as 'A01' | 'A02' | 'A03' | 'B01',
-      });
-    }
-    return items;
-  };
+    return lines;
+  }, [travelData, idToCoord, selectedDay]);
 
+  /** 지도 중심: 첫 마커 or 기본값 */
+  const mapCenter: LatLng = useMemo(
+    () =>
+      mapMarkers[0]?.position ??
+      (travelData?.days?.[0]?.places?.[0]
+        ? {
+            lat: travelData.days[0].places[0].latitude,
+            lng: travelData.days[0].places[0].longitude,
+          }
+        : { lat: 36.5, lng: 127.9 }),
+    [mapMarkers, travelData]
+  );
+
+  /** 타임라인(기존 기능 유지) */
   const schedules =
     travelData?.days.map((day, idx) => {
-      const dayRoutes = travelData.routes.find((r) => r.daily_route[day.date]);
-      const routes = dayRoutes ? dayRoutes.daily_route[day.date] : [];
-      return { day: idx + 1, date: day.date, places: createTimelineItems(day, routes) };
+      const routes = travelData.routes.find((r) => r.daily_route[day.date])?.daily_route[day.date] ?? [];
+      const items = [
+        ...day.places.map((p) => {
+          const r = routes.find((rt) => rt.origin === p.content_id);
+          return {
+            id: p.content_id,
+            title: p.title,
+            image: p.image,
+            time: `${p.start_time}~${p.end_time}`,
+            placeType: p.placeType,
+            duration: r ? formatDuration(r.duration) : undefined,
+          };
+        }),
+        ...(day.accommodation
+          ? [
+              {
+                id: day.accommodation.content_id,
+                title: day.accommodation.title,
+                image: day.accommodation.image,
+                time: `${day.accommodation.start_time}~${day.accommodation.end_time}`,
+                placeType: day.accommodation.placeType,
+              },
+            ]
+          : []),
+      ];
+      return { day: idx + 1, date: day.date, places: items };
     }) ?? [];
 
-  const filteredSchedules = selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
+  const filteredSchedules =
+    selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
 
-  const canSave = isEditing && (mode === 'create' ? true : isDirty);
+  /** 사이드바 */
+  const sidebarContent = (
+    <>
+      <button
+        onClick={() => setSelectedDay('all')}
+        className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
+          selectedDay === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+        }`}
+      >
+        전체
+      </button>
+      {Array.from({ length: schedules.length }, (_, i) => {
+        const day = i + 1;
+        return (
+          <button
+            key={day}
+            onClick={() => setSelectedDay(day)}
+            className={`w-12 h-8 rounded flex items-center justify-center text-sm font-semibold transition-colors ${
+              selectedDay === day ? 'bg-black text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            {day}일차
+          </button>
+        );
+      })}
+    </>
+  );
+
+  const sidebarButtons = (
+    <>
+      <button
+        onClick={() => window.dispatchEvent(new Event('wego:open-settlement-sheet'))}
+        className="py-2 px-4 rounded-md text-base bg-violet-100 text-violet-700 hover:bg-violet-200"
+      >
+        정산 내역 입력
+      </button>
+    </>
+  );
+
+  /** 본문(타임라인) */
+  const mainContent = (
+    <div className="bg-white h-full flex flex-col">
+      <div className="p-6 flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-4xl font-bold">LOGO</h1>
+          </div>
+        </div>
+        {travelData && (
+          <p className="text-sm text-gray-500">
+            {travelData.start_date} ~ {travelData.end_date}
+          </p>
+        )}
+      </div>
+
+      <div
+        className="flex-1 p-6 overflow-y-auto"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        <style>{`div::-webkit-scrollbar{display:none}`}</style>
+        <div className="flex gap-12 transition-all duration-300 min-w-max">
+          {filteredSchedules.map((schedule, dayIndex) => (
+            <div key={dayIndex} className="flex-shrink-0 w-80 transition-all duration-300">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-3xl font-bold">{schedule.day}일차</h2>
+                <p className="text-xs text-gray-400">{schedule.date}</p>
+              </div>
+
+              <div className="flex flex-col">
+                {schedule.places.map((place, placeIndex) => {
+                  const isFirst = placeIndex === 0;
+                  const isLast = placeIndex === schedule.places.length - 1;
+                  const info = (() => {
+                    switch (place.placeType) {
+                      case 'A01':
+                        return { color: 'bg-blue-500', textColor: 'text-blue-500', label: '명소' };
+                      case 'A02':
+                        return { color: 'bg-red-500', textColor: 'text-red-500', label: '음식점' };
+                      case 'A03':
+                        return {
+                          color: 'bg-emerald-500',
+                          textColor: 'text-emerald-500',
+                          label: '카페',
+                        };
+                      case 'B01':
+                        return { color: 'bg-gray-500', textColor: 'text-gray-500', label: '숙소' };
+                      default:
+                        return { color: 'bg-gray-400', textColor: 'text-gray-400', label: '기타' };
+                    }
+                  })();
+
+                  return (
+                    <div key={placeIndex} className="flex items-start mb-8">
+                      <div className="flex-shrink-0">
+                        <SingleTimelineItem
+                          index={placeIndex}
+                          color={info.color}
+                          isFirst={isFirst}
+                          isLast={isLast}
+                          duration={(place as any).duration}
+                        />
+                      </div>
+
+                      <div
+                        className="ml-4 flex-1"
+                        style={{ marginTop: isFirst ? '0px' : '178px' }}
+                      >
+                        <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
+                          {place.time && (
+                            <p className="text-sm text-gray-500 mb-3">{place.time}</p>
+                          )}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium text-sm">{place.title}</h3>
+                              <span className={`text-xs ${info.textColor}`}>{info.label}</span>
+                            </div>
+                            <img
+                              src={(place as any).image || undefined}
+                              alt={place.title}
+                              className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  /** 정산 */
+  const settlementContent = authChecked ? (
+    <Settlement
+      isAuthenticated={isAuthForSettlement}
+      onRequireLogin={() => {
+        const redirect = encodeURIComponent(location.pathname + location.search);
+        navigate(`/login?redirect=${redirect}`);
+      }}
+    />
+  ) : (
+    <div className="h-full flex items-center justify-center text-gray-400">확인 중...</div>
+  );
 
   if (loading) {
     return (
@@ -482,119 +459,25 @@ const TravelPlanCheck: React.FC = () => {
     );
   }
 
-  const mainContent = (
-    <div className="bg-white h-full flex flex-col">
-      <div className="p-6 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h1 className="text-4xl font-bold">LOGO</h1>
-            <span className="text-lg text-gray-500">제주</span>
-          </div>
-        </div>
-        <p className="text-sm text-gray-500">
-          {travelData.start_date} ~ {travelData.end_date}
-        </p>
-      </div>
-
-      <div className="flex-1 p-6 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        <style>{`div::-webkit-scrollbar{display:none}`}</style>
-        <div className={`flex gap-12 transition-all duration-300 ${isMainPanelOpen ? 'min-w-max' : ''}`}>
-          {filteredSchedules.map((schedule, dayIndex) => (
-            <div
-              key={dayIndex}
-              className={`flex-shrink-0 ${isMainPanelOpen ? 'w-80' : dayIndex === 0 ? 'w-80' : 'w-0 overflow-hidden'} transition-all duration-300`}
-            >
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-3xl font-bold">{schedule.day}일차</h2>
-                <p className="text-xs text-gray-400">{schedule.date}</p>
-              </div>
-
-              <div className="flex flex-col">
-                {schedule.places.map((place, placeIndex) => {
-                  const isFirst = placeIndex === 0;
-                  const isLast = placeIndex === schedule.places.length - 1;
-                  const info = getPlaceTypeInfo(place.placeType);
-
-                return (
-                    <div key={placeIndex} className="flex items-start mb-8">
-                      <div className="flex-shrink-0">
-                        <SingleTimelineItem
-                          index={placeIndex}
-                          color={info.color}
-                          isFirst={isFirst}
-                          isLast={isLast}
-                          duration={place.duration}
-                        />
-                      </div>
-
-                      <div className="ml-4 flex-1" style={{ marginTop: isFirst ? '0px' : '178px' }}>
-                        <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
-                          {place.time && <p className="text-sm text-gray-500 mb-3">{place.time}</p>}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-medium text-sm">{place.title}</h3>
-                              <span className={`text-xs ${info.textColor}`}>{info.label}</span>
-                            </div>
-                            <img
-                              src={place.image || undefined}
-                              alt={place.title}
-                              className="w-16 h-12 object-cover rounded ml-3 flex-shrink-0"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );})}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const mapContent = (
-    <div className="h-full flex flex-col items-center justify-center">
-      <h3 className="text-lg font-medium mb-2">지도 영역</h3>
-      <p className="text-gray-600">지도 API 연동 예정</p>
-    </div>
-  );
-
-  const settlementContent = authChecked ? (
-    <Settlement isAuthenticated={isAuthForSettlement} onRequireLogin={redirectToLogin} />
-  ) : (
-    <div className="h-full flex items-center justify-center text-gray-400">확인 중…</div>
-  );
-
-  /** ✅ 정산하기 타이틀 오른쪽 버튼 */
-  const settlementHeaderRight = (
-    <button
-      onClick={() => window.dispatchEvent(new Event('wego:open-settlement-sheet'))}
-      className="px-3 py-1 text-sm bg-violet-100 text-violet-700 rounded-md hover:bg-violet-200"
-    >
-      정산 내역 입력
-    </button>
-  );
+  /** 지도 줌 */
+  const mapZoom = selectedDay === 'all' ? 7 : 11;
 
   return (
     <>
       <FullCheckColumnLayout
-        activeStep={activeStep}
-        setActiveStep={setActiveStep}
-        mapContent={mapContent}
+        // 사이드바
+        sidebarContent={sidebarContent}
+        sidebarButtons={sidebarButtons}
+        // 정산
         settlementContent={settlementContent}
-        settlementHeaderRight={settlementHeaderRight}
-        isMainPanelOpen={isMainPanelOpen}
-        setIsMainPanelOpen={setIsMainPanelOpen}
-        selectedDay={selectedDay}
-        setSelectedDay={setSelectedDay}
-        totalDays={schedules.length}
-        onEdit={handleEdit}
-        onSave={handleSave}
-        isEditing={isEditing}
-        canSave={canSave}
-        editDisabled={false}
-        onNext={() => setActiveStep(activeStep + 1)}
+        // 지도
+        mapCenter={mapCenter}
+        mapZoom={mapZoom}
+        mapMarkers={mapMarkers}
+        polylines={polylines}
+        selectedMarkerId={selectedMarkerId}
+        onMarkerClick={(id) => setSelectedMarkerId(id)}
+        centerMarker={true}
       >
         {mainContent}
       </FullCheckColumnLayout>
@@ -604,7 +487,7 @@ const TravelPlanCheck: React.FC = () => {
         onClose={() => setShowSavedModal(false)}
         onConfirm={() => {
           setShowSavedModal(false);
-          if (mode === 'create' && !shareMode) navigate('/mypage');
+          if (mode === 'create' && !token) navigate('/mypage');
         }}
       />
     </>
