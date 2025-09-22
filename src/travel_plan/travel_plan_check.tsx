@@ -9,6 +9,22 @@ import TravelPlanSavedModal from './components/travelPlanSavedModal';
 import FullCheckColumnLayout from './components/FullCheckColumnLayout';
 import type { MapMarker, MapPolyline, LatLng } from './components/mapTypes';
 
+/**
+ * 💡요구사항 주석 (사용자 요청 그대로)
+ * 
+ * "그럼 왠래 내가 하려던거는 처음 여행 일정을 진입시 편집, 저장 버튼이 보이고
+ *  저장을 누르면 patch를 날리고 마이페이지로 이동하고
+ *  편집 버튼을 누르면 편집모드가 켜져서 사이드바의 아래 버튼이
+ *  취소(말 그대로 변경사항을 모두 버리고 왠래 상태인 여행일정 조회 모드로 이동),
+ *  적용(변경사항들에 대한 결과를 반영한 조회 모드),
+ *  저장 버튼 비활성화 이렇게 사이클을 만들려고 했는데
+ *  편집 모드떄 적용 을 누르고 변경된 여행일정에 대한 경로가 다시 업데이트되어
+ *  변경된 여행일정을 조회하는 처음 으로 돌아가면 그때 저장버튼이 patch가 가능하니
+ *  변경사항이 적용되고 메인페이지로 이동하고
+ *  만약 편집모드에서 여행 일정을 수정하다가 마음에 안들면 취소 버튼을 누르면
+ *  변경사항들을 버리고 왠래 여행일정을 그대로 가지는 상태가 되어야 한다."
+ */
+
 /** axios */
 const api = axios.create({
   baseURL: 'http://localhost:8080',
@@ -58,6 +74,8 @@ interface RouteInfo {
   daily_route: Record<string, RouteDetail[]>; // key: "yyyy-MM-dd"
 }
 interface TravelData {
+  /** ✅ 서버에서 내려주는 사람 읽는 지역명 */
+  slug: string;
   start_date: string;
   end_date: string;
   days: DaySchedule[];
@@ -85,6 +103,7 @@ const TravelPlanCheck: React.FC = () => {
 
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
   const [travelData, setTravelData] = useState<TravelData | null>(null);
+  const [originalData, setOriginalData] = useState<TravelData | null>(null); // 조회 모드의 기준 데이터(취소 시 복구)
   const [loading, setLoading] = useState(true);
 
   // 정산/권한
@@ -96,6 +115,9 @@ const TravelPlanCheck: React.FC = () => {
 
   // 지도 선택 마커
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
+
+  // 편집 모드 (회원 본인 일정에서만 의미)
+  const [isEditing, setIsEditing] = useState(false);
 
   // 로그인 후 자동 저장을 트리거하는 플래그 (쿼리스트링 ?autoSave=1)
   const autoSaveRequested = getQuery(location.search).get('autoSave') === '1';
@@ -124,6 +146,7 @@ const TravelPlanCheck: React.FC = () => {
         }
 
         setTravelData(data);
+        setOriginalData(data); // 최초 조회 상태를 원본으로 보관
       } catch (e: any) {
         console.error('[TravelPlanCheck] load fail', e);
         if (e?.message === 'MISSING_UUID') navigate('/', { replace: true });
@@ -152,14 +175,14 @@ const TravelPlanCheck: React.FC = () => {
     };
   }, []);
 
-  /** 비회원 → 로그인 후 돌아왔고 autoSave=1이면 자동 저장 */
+  /** 비회원 → 로그인 후 돌아왔고 autoSave=1이면 자동 저장 (임시 일정만) */
   useEffect(() => {
     (async () => {
-      if (!authChecked) return;              // 로그인 체크 끝나야
-      if (!isAuthForSettlement) return;      // 여전히 비회원이면 X
-      if (!autoSaveRequested) return;        // 자동 저장 요청 없으면 X
-      if (!travelData) return;               // 데이터 준비 필요
-      if (token || travelPlanId) return;     // 공유/회원 일정은 자동 저장 X (임시 일정만)
+      if (!authChecked) return;
+      if (!isAuthForSettlement) return;
+      if (!autoSaveRequested) return;
+      if (!travelData) return;
+      if (token || travelPlanId) return;
 
       try {
         const uuid = Cookies.get('travelPlanUUID');
@@ -169,7 +192,6 @@ const TravelPlanCheck: React.FC = () => {
         if (res.status === 200) {
           Cookies.remove('travelPlanUUID');
           setShowSavedModal(true);
-          // 주소에서 autoSave 파라미터 제거 (뒤로가기로 또 저장되는 것 방지)
           const cleaned = withParam(location.pathname + location.search, 'autoSave', '0');
           navigate(cleaned, { replace: true });
         }
@@ -339,7 +361,7 @@ const TravelPlanCheck: React.FC = () => {
     }
   };
 
-  /** 편집/저장 동작 */
+  /** 편집/저장/취소/적용 동작 */
   const redirectToLoginWith = (extraParam?: Record<string, string>) => {
     const cur = new URL(window.location.href);
     if (extraParam) {
@@ -349,41 +371,76 @@ const TravelPlanCheck: React.FC = () => {
     navigate(`/login?redirect=${redirect}`);
   };
 
-  const handleEdit = () => {
+  const handleEditToggle = () => {
     if (!isAuthForSettlement) {
-      // 편집 클릭 → 로그인만 유도
       redirectToLoginWith();
       return;
     }
-    alert('편집 모드를 켭니다. (필요한 편집 UI는 추후 연결)');
+    if (token) {
+      alert('공유 일정은 편집할 수 없습니다.');
+      return;
+    }
+    if (!travelPlanId) {
+      alert('임시 일정은 편집 모드가 없습니다.');
+      return;
+    }
+    // 편집 모드 토글
+    setIsEditing((v) => !v);
+  };
+
+  const handleCancelEdit = () => {
+    // 변경사항을 모두 버리고 원래 조회 상태로 복귀
+    if (originalData) setTravelData(originalData);
+    setIsEditing(false);
+  };
+
+  const handleApplyEdit = () => {
+    // 변경사항을 조회 상태에 반영(= 원본 덮어쓰기)하고 조회 모드로 복귀
+    if (travelData) setOriginalData(travelData);
+    // NOTE: 실제로는 여기서 경로 재계산 등을 트리거해야 함(미구현)
+    setIsEditing(false);
   };
 
   const handleSave = async () => {
-    // 비회원이면 로그인으로 보내면서 autoSave=1을 붙여서 돌아오면 자동 저장
+    // 비회원이면 로그인으로 보내면서 autoSave=1을 붙여 임시 일정은 돌아와서 자동 저장
     if (!isAuthForSettlement) {
       redirectToLoginWith({ autoSave: '1' });
       return;
     }
 
-    // 로그인 상태에서 저장
+    // 편집 모드에서는 저장 비활성화(UX 요구사항): 방어 로직
+    if (isEditing) return;
+
     try {
-      if (token || travelPlanId) {
-        // 공유/회원 뷰: 여기서는 실제 저장 API 정의가 없으므로 모달만 띄움
+      if (token) {
+        // 공유 일정은 일정 저장 권한 없음 (정산만 가능)
+        alert('공유 일정은 저장할 수 없습니다. 정산 기능만 가능합니다.');
+        return;
+      }
+
+      if (travelPlanId) {
+        // 회원 + 본인 일정: PATCH 시도 후 모달
+        try {
+          await api.patch(`/travel-plans/${travelPlanId}`, originalData ?? {}); // 조회 모드 기준 데이터 전송
+        } catch (e) {
+          console.warn('[save] PATCH /travel-plans/{id} 실패 - 그래도 모달은 표시합니다.', e);
+        }
+        setShowSavedModal(true);
+        return;
+      }
+
+      // 임시(Draft) 일정: 최종 저장
+      const uuid = Cookies.get('travelPlanUUID');
+      if (!uuid) {
+        alert('임시 여행 일정 정보(UUID)가 없습니다.');
+        return;
+      }
+      const res = await api.post(`/draft-plans/${uuid}`);
+      if (res.status === 200) {
+        Cookies.remove('travelPlanUUID');
         setShowSavedModal(true);
       } else {
-        // 임시(Draft) 저장
-        const uuid = Cookies.get('travelPlanUUID');
-        if (!uuid) {
-          alert('임시 여행 일정 정보(UUID)가 없습니다.');
-          return;
-        }
-        const res = await api.post(`/draft-plans/${uuid}`);
-        if (res.status === 200) {
-          Cookies.remove('travelPlanUUID');
-          setShowSavedModal(true);
-        } else {
-          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-        }
+        alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
       }
     } catch (err) {
       console.error('[save] 실패', err);
@@ -419,24 +476,47 @@ const TravelPlanCheck: React.FC = () => {
     </>
   );
 
-  /** 사이드바 하단 버튼 (비회원도 보이되, 누르면 로그인/리다이렉트) */
-  const sidebarButtons = (
-    <>
-      <div className="flex flex-col gap-2 mt-3">
-        <button
-          onClick={handleEdit}
-          className="py-2 px-4 rounded-md text-base bg-gray-200 text-gray-700 hover:bg-gray-300"
-        >
-          편집
-        </button>
-        <button
-          onClick={handleSave}
-          className="py-2 px-4 rounded-md text-base bg-red-500 text-white hover:bg-red-600"
-        >
-          저장
-        </button>
-      </div>
-    </>
+  /** 사이드바 하단 버튼 (편집 모드/조회 모드에 따라 다르게 렌더링) */
+  const sidebarButtons = isEditing ? (
+    // 편집 모드: 취소 / 적용 / 저장(비활성화)
+    <div className="flex flex-col gap-2 mt-3">
+      <button
+        onClick={handleCancelEdit}
+        className="py-2 px-4 rounded-md text-base bg-gray-100 text-gray-700 hover:bg-gray-200"
+      >
+        취소
+      </button>
+      <button
+        onClick={handleApplyEdit}
+        className="py-2 px-4 rounded-md text-base bg-gray-800 text-white hover:bg-black"
+      >
+        적용
+      </button>
+      <button
+        disabled
+        className="py-2 px-4 rounded-md text-base bg-red-100 text-red-300 cursor-not-allowed"
+        onClick={() => {}}
+        title="편집 모드에서는 저장할 수 없습니다. 적용 후 조회 모드에서 저장하세요."
+      >
+        저장
+      </button>
+    </div>
+  ) : (
+    // 조회 모드: 편집 / 저장(활성화)
+    <div className="flex flex-col gap-2 mt-3">
+      <button
+        onClick={handleEditToggle}
+        className="py-2 px-4 rounded-md text-base bg-gray-200 text-gray-700 hover:bg-gray-300"
+      >
+        편집
+      </button>
+      <button
+        onClick={handleSave}
+        className="py-2 px-4 rounded-md text-base bg-red-500 text-white hover:bg-red-600"
+      >
+        저장
+      </button>
+    </div>
   );
 
   /** 본문(타임라인) */
@@ -445,7 +525,8 @@ const TravelPlanCheck: React.FC = () => {
       <div className="p-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h1 className="text-4xl font-bold">LOGO</h1>
+            {/* ✅ LOGO 대신 서버에서 받은 slug 표시 */}
+            <h1 className="text-4xl font-bold">{travelData?.slug ?? '여행'}</h1>
           </div>
         </div>
         {travelData && (
@@ -510,15 +591,21 @@ const TravelPlanCheck: React.FC = () => {
     </div>
   );
 
-  /** 정산 (권한 체크 상태에 따라) */
-  // ✅ 변경: 공유자(token 존재)면 로그인 여부와 관계없이 Settlement 표시.
-  //          일반 접근(비회원)일 때만 로그인 버튼 UI가 보이도록 함.
+  /** 정산 (로그인한 경우에만 '정산 내역 입력' 버튼 노출) */
   const settlementContent = authChecked ? (
-    token ? (
-      <Settlement
-        isAuthenticated={true} // 공유자는 비로그인이어도 정산 탭을 볼 수 있게 허용
-      />
-    ) : (
+    <div className="h-full pt-0">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">정산하기</h2>
+        {isAuthForSettlement && (
+          <button
+            onClick={() => window.dispatchEvent(new Event('wego:open-settlement-sheet'))}
+            className="px-3 py-1 text-sm bg-violet-100 text-violet-700 rounded-md hover:bg-violet-200"
+          >
+            정산 내역 입력
+          </button>
+        )}
+      </div>
+
       <Settlement
         isAuthenticated={isAuthForSettlement}
         onRequireLogin={() => {
@@ -526,7 +613,7 @@ const TravelPlanCheck: React.FC = () => {
           navigate(`/login?redirect=${redirect}`);
         }}
       />
-    )
+    </div>
   ) : (
     <div className="h-full flex items-center justify-center text-gray-400">확인 중...</div>
   );
@@ -567,7 +654,7 @@ const TravelPlanCheck: React.FC = () => {
         // 사이드바
         sidebarContent={sidebarContent}
         sidebarButtons={sidebarButtons}
-        // 정산
+        // 정산 (헤더+버튼 포함해서 넘김)
         settlementContent={settlementContent}
         // 지도
         mapCenter={mapCenter}
@@ -586,7 +673,8 @@ const TravelPlanCheck: React.FC = () => {
         onClose={() => setShowSavedModal(false)}
         onConfirm={() => {
           setShowSavedModal(false);
-          if (mode === 'create' && !token) navigate('/mypage');
+          // 공유 일정이 아닌 경우(회원 본인 + 드래프트) 마이페이지로 이동
+          if (!token) navigate('/mypage');
         }}
       />
     </>

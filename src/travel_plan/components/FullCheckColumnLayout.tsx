@@ -1,5 +1,6 @@
 // src/travel_plan/components/FullCheckColumnLayout.tsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom"; // ✅ 메인 이동용
 import GoogleMapView from "./GoogleMapView";
 import type { LatLng, MapMarker, MapPolyline, CenterMarkerOptions } from "./mapTypes";
 
@@ -37,12 +38,24 @@ const FullCheckColumnLayout: React.FC<Props> = ({
   const [isMainPanelOpen, setIsMainPanelOpen] = useState(true);
   const [isSettlementPanelOpen, setIsSettlementPanelOpen] = useState(true);
 
+  // ✅ 로고 클릭 확인 모달 상태
+  const [showConfirm, setShowConfirm] = useState(false);
+  const navigate = useNavigate();
+
   return (
     <div className="flex h-screen">
       {/* 왼쪽 사이드바 */}
       <aside className="w-[125px] bg-white p-6 flex flex-col justify-between">
         <div>
-          <div className="text-2xl font-bold mb-10">LOGO</div>
+          {/* ✅ 로고: wego / 클릭 시 모달 */}
+          <button
+            onClick={() => setShowConfirm(true)}
+            className="text-left text-2xl font-bold mb-10 hover:opacity-80"
+            aria-label="홈으로 이동"
+          >
+            wego
+          </button>
+
           <nav className="flex flex-col gap-4 text-sm">
             {sidebarContent || <div className="text-gray-400">사이드바 콘텐츠가 없습니다.</div>}
           </nav>
@@ -86,7 +99,7 @@ const FullCheckColumnLayout: React.FC<Props> = ({
               polylines={polylines}
               selectedMarkerId={selectedMarkerId ?? null}
               onMarkerClick={onMarkerClick}
-              centerMarker={centerMarker}  // ✅ 추가
+              centerMarker={centerMarker}  // ✅ 유지
             />
           </div>
         </div>
@@ -117,6 +130,36 @@ const FullCheckColumnLayout: React.FC<Props> = ({
           )}
         </div>
       </div>
+
+      {/* ✅ 확인 모달 */}
+      {showConfirm && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-xl shadow-xl w-[90%] max-w-sm p-5">
+            <h3 className="text-lg font-semibold mb-2">페이지를 떠나시겠어요?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              현재 작업이 <span className="font-medium text-red-600">저장되지 않을 수 있습니다.</span>
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="px-3 py-2 rounded-md text-sm bg-gray-100 text-gray-700 hover:bg-gray-200"
+                onClick={() => setShowConfirm(false)}
+              >
+                취소
+              </button>
+              <button
+                className="px-3 py-2 rounded-md text-sm bg-red-500 text-white hover:bg-red-600"
+                onClick={() => navigate("/")}
+              >
+                예, 나가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

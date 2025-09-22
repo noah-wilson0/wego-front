@@ -159,8 +159,8 @@ const TravelPlanItem: React.FC<TravelPlanItemProps> = ({
     setCopyOk(false);
 
     try {
-      // 백엔드: POST /travel_plan/{travelPlanId}/share → token(String)
-      const res = await axios.post<string>(`http://localhost:8080/travel_plan/${id}/share`, null, {
+      // 백엔드: POST /travel-plans/{travelPlanId}/share → token(String)
+      const res = await axios.post<string>(`http://localhost:8080/travel-plans/${id}/share`, null, {
         withCredentials: true,
         headers: { 'Content-Type': 'application/json' },
       });

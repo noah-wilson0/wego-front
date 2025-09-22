@@ -427,16 +427,23 @@ const Settlement: React.FC<SettlementProps> = ({
       </p>
 
       <div className="mb-6">
-        <div className="flex items-center justify-end mb-1 gap-2">
-          <span className="text-gray-400 text-sm">{fmt(budget)}</span>
-          <button
-            className="p-1 rounded hover:bg-gray-100"
-            title="예산 수정"
-            onClick={() => setBudgetModalOpen(true)}
-          >
-            <Pencil className="w-4 h-4 text-gray-500" />
-          </button>
+        {/* ✅ 상단 라인: 왼쪽 사용액, 오른쪽 예산 + 수정 */}
+        <div className="flex items-center justify-between mb-1 gap-2">
+          <span className="text-gray-500 text-sm">
+            <b>{fmt(serverTotalPaid)}</b>
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 text-sm">{fmt(budget)}</span>
+            <button
+              className="p-1 rounded hover:bg-gray-100"
+              title="예산 수정"
+              onClick={() => setBudgetModalOpen(true)}
+            >
+              <Pencil className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
         </div>
+
         <div className="w-full bg-violet-100 rounded-full h-2 overflow-hidden">
           <div className="h-2 bg-violet-500 transition-all duration-300" style={{ width: `${percent}%` }} />
         </div>
@@ -471,7 +478,7 @@ const Settlement: React.FC<SettlementProps> = ({
             try {
               if (isShare) {
                 // 공유 모드: 현재 백엔드가 GET만 구현됨
-                const { data } = await axios.get<ApiSettlementResult>(url('/result'), {
+                const { data } = await axios.post<ApiSettlementResult>(url('/result'), {
                   withCredentials: true,
                 });
                 setSettlementResult(data);
