@@ -50,8 +50,22 @@ function CategoryTag({ code }: { code: string }) {
   return <span className={`text-xs font-medium ${meta.text} mr-2 align-middle`}>{meta.label}</span>;
 }
 
+/** 카테고리별 동그라미 인덱스 색상 */
+const INDEX_BADGE_CLASS: Record<string, string> = {
+  A01: 'bg-blue-100 text-blue-700',
+  A02: 'bg-red-100 text-red-700',
+  A03: 'bg-orange-100 text-orange-700',
+  B01: 'bg-purple-100 text-purple-700',
+  default: 'bg-gray-200 text-gray-700',
+};
+
+// ✅ 검색 시 항상 보낼 전체 장소 타입
+const ALL_PLACE_TYPES = ['A01', 'A02', 'A03'] as const;
+
 const travelPlanPlace: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  // 🔹 실제 API 검색에 사용하는 키워드 (Enter/아이콘 클릭 시 확정)
+  const [activeKeyword, setActiveKeyword] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'장소' | '식당' | '카페'>('장소');
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedPlaces, setSelectedPlaces] = useState<Place[]>([]);
@@ -99,14 +113,16 @@ const travelPlanPlace: React.FC = () => {
     setPlaces([]);
     setPage(0);
     setHasMore(true);
+    // 카테고리 바꿔도 현재 activeKeyword는 유지 → 같은 키워드로 해당 카테고리 재검색
   }, [selectedCategory]);
 
-  // 페이지 로드
+  // 페이지/카테고리/검색키워드 변할 때 로드
   useEffect(() => {
     loadPlaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, selectedCategory]);
+  }, [page, selectedCategory, activeKeyword]);
 
+  // 🔹 공통 로드 함수 (목록 또는 검색)
   const loadPlaces = async () => {
     if (!hasMore || loading) return;
 
@@ -119,9 +135,27 @@ const travelPlanPlace: React.FC = () => {
     setLoading(true);
     try {
       const type = categoryMap[selectedCategory];
-      const res = await axios.get(
-        `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`
-      );
+
+      let url: string;
+      if (activeKeyword && activeKeyword.trim().length > 0) {
+        // ✅ 검색 모드: /places/search (항상 A01,A02,A03 모두 전송)
+        const params = new URLSearchParams({
+          uuid: uuid,
+          keyword: activeKeyword,
+          page: String(page),
+          size: '20',
+        });
+        params.append('sort', 'averageRating,desc');
+        params.append('sort', 'likeCount,desc');
+        ALL_PLACE_TYPES.forEach(pt => params.append('placeTypes', pt)); // 🔸 여기!
+
+        url = `http://localhost:8080/places/search?${params.toString()}`;
+      } else {
+        // 📃 목록 모드: 기존 엔드포인트(선택 탭만)
+        url = `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/${type}/paged?page=${page}&size=20`;
+      }
+
+      const res = await axios.get(url);
 
       const newData: Place[] = res.data.content.map((item: any) => ({
         contentId: item.contentId,
@@ -145,6 +179,7 @@ const travelPlanPlace: React.FC = () => {
     }
   };
 
+  // 무한 스크롤 옵저버
   const lastPlaceRef = useCallback((node: HTMLDivElement | null) => {
     if (loading) return;
     if (observer.current) observer.current.disconnect();
@@ -187,7 +222,7 @@ const travelPlanPlace: React.FC = () => {
       lat: p.latitude,
       lng: p.longitude,
       imageUrl: p.imageUrl,
-      category: p.category as 'A01' | 'A02' | 'A03', // ★ 여기 중요!
+      category: p.category as 'A01' | 'A02' | 'A03',
     }));
     localStorage.setItem(`selectedPlaces:${uuid}`, JSON.stringify(minimal));
   }, [selectedPlaces]);
@@ -220,7 +255,7 @@ const travelPlanPlace: React.FC = () => {
         title: p.name,
         position: { lat: p.latitude as number, lng: p.longitude as number },
         category: p.category as 'A01' | 'A02' | 'A03',
-        order: idx + 1, // ← 순번 추가
+        order: idx + 1,
         infoHtml: `
           <div style="max-width:200px">
             <div style="font-weight:600;margin-bottom:4px">${p.name}</div>
@@ -233,6 +268,16 @@ const travelPlanPlace: React.FC = () => {
   // 지역 기본 뷰
   const regionView = useMemo(() => resolveRegionView(travelInfo.destination), [travelInfo.destination]);
 
+  /** 🔍 검색 트리거: Enter/아이콘 클릭 시 호출 */
+  const handleSearch = useCallback(() => {
+    const kw = searchTerm.trim();
+    setPlaces([]);
+    setPage(0);
+    setHasMore(true);
+    setActiveKeyword(kw); // 빈 문자열이면 목록 모드로 자동 전환
+  }, [searchTerm]);
+
+  /** ---------------- 선택된 장소 패널 (동그라미 인덱스 배지: 카드 바깥) ---------------- */
   const selectedPlacesComponent = (
     <div className="space-y-3">
       {selectedPlaces.length === 0 ? (
@@ -243,38 +288,47 @@ const travelPlanPlace: React.FC = () => {
       ) : (
         <>
           <div className="text-sm text-gray-600 mb-4">총 {selectedPlaces.length}개 장소 선택됨</div>
-          {selectedPlaces.map((place, index) => (
-            <div key={place.contentId} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
-              <div className="flex items-start gap-3">
-                <img src={place.imageUrl} alt={place.name} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-800 text-sm truncate">{place.name}</h4>
-                    <button onClick={() => removePlace(place.contentId)} className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                    <CategoryTag code={place.category} />
-                    <span className="align-middle">{place.description}</span>
-                  </p>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Heart className={`w-3 h-3 ${place.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                      <span>{place.likes}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                      <span>{place.rating}</span>
+
+          {selectedPlaces.map((place, index) => {
+            const badgeClass =
+              INDEX_BADGE_CLASS[place.category] || INDEX_BADGE_CLASS.default;
+
+            return (
+              <div key={place.contentId} className="flex items-start gap-3">
+                <div className={`mt-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${badgeClass}`}>
+                  {index + 1}
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm flex-1">
+                  <div className="flex items-start gap-3">
+                    <img src={place.imageUrl} alt={place.name} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-gray-800 text-sm truncate">{place.name}</h4>
+                        <button onClick={() => removePlace(place.contentId)} className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                        <CategoryTag code={place.category} />
+                        <span className="align-middle">{place.description}</span>
+                      </p>
+                      <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <Heart className={`w-3 h-3 ${place.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                          <span>{place.likes}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                          <span>{place.rating}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="mt-2 pt-2 border-t border-gray-100">
-                <div className="text-xs text-gray-400">Day {Math.floor(index / 3) + 1}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </>
       )}
     </div>
@@ -306,13 +360,29 @@ const travelPlanPlace: React.FC = () => {
           </div>
         </div>
 
+        {/* 🔍 검색영역: 아이콘 클릭/Enter로 검색 */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <button
+            type="button"
+            onClick={handleSearch}
+            className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+            aria-label="검색"
+            title="검색"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
           <input
             type="text"
             placeholder="장소명을 검색해보세요"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -321,7 +391,13 @@ const travelPlanPlace: React.FC = () => {
           {categories.map(category => (
             <button
               key={category}
-              onClick={() => setSelectedCategory(category)}
+              onClick={() => {
+                setSelectedCategory(category);
+                // 카테고리 변경 시 리스트 초기화 (activeKeyword는 유지 → 같은 키워드로 새 카테고리 검색)
+                setPlaces([]);
+                setPage(0);
+                setHasMore(true);
+              }}
               className={`px-4 py-2 text-sm rounded-lg transition-colors ${
                 selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}

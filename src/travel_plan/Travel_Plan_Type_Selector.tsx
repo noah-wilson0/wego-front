@@ -1,81 +1,25 @@
+// src/travel_plan/GenerationMethodPage.tsx
 import React, { useState } from 'react';
 import axios from 'axios';
 import Cookies from 'js-cookie';
 import { useNavigate } from 'react-router-dom';
+import Sidebar from './components/Sidebar';
 
-// 🔹 공통 레이아웃 컴포넌트
-interface TwoColumnLayoutProps {
-  children: React.ReactNode;
-  activeStep: number;
-  onNext?: () => void;
-}
-
-const TwoColumnLayout: React.FC<TwoColumnLayoutProps> = ({
-  children,
-  activeStep,
-  onNext,
-}) => {
-  const stepLabels = [
-    { number: 1, title: '시간 선택' },
-    { number: 2, title: '생성 방식 선택' },
-    { number: 3, title: '장소 선택' },
-    { number: 4, title: '숙소 선택' },
-  ];
-
-  return (
-    <div className="flex h-screen w-full">
-      {/* 좌측 사이드바 */}
-      <aside className="w-[125px] bg-white p-6 flex flex-col justify-between">
-        <div>
-          <div className="text-2xl font-bold mb-10">LOGO</div>
-          <nav className="flex flex-col gap-4 text-sm">
-            {stepLabels.map((step) => (
-              <div
-                key={step.number}
-                className={`select-none transition-colors ${
-                  activeStep === step.number
-                    ? 'text-blue-600 font-semibold'
-                    : 'text-gray-400'
-                }`}
-              >
-                Step {step.number}.<br />
-                {step.title}
-              </div>
-            ))}
-          </nav>
-        </div>
-        <button
-          className="mt-10 bg-black text-white py-2 px-4 rounded-md text-base hover:bg-gray-800 transition-colors"
-          onClick={onNext}
-        >
-          다음
-        </button>
-      </aside>
-
-      {/* 본문 영역 */}
-      <main className="flex-1 bg-white overflow-auto">{children}</main>
-    </div>
-  );
-};
-
-// 🔹 생성 방식 선택 UI 컴포넌트
+/** 생성 방식 선택 카드 */
 interface GenerationMethodSelectionProps {
-  selectedMethod: string;
-  setSelectedMethod: (method: string) => void;
+  onSelect: (method: 'camera' | 'manual') => void;
 }
-
 const GenerationMethodSelection: React.FC<GenerationMethodSelectionProps> = ({
-  selectedMethod,
-  setSelectedMethod,
+  onSelect,
 }) => {
   const methods = [
     {
-      id: 'camera',
+      id: 'camera' as const,
       title: '캐미를 기반으로\n여행 일정을 전부 짜줌',
       emoji: '🪄',
     },
     {
-      id: 'manual',
+      id: 'manual' as const,
       title: '내가 직접\n여행 일정 짜기',
       emoji: '👌',
     },
@@ -88,12 +32,9 @@ const GenerationMethodSelection: React.FC<GenerationMethodSelectionProps> = ({
           <div
             key={method.id}
             className={`relative w-80 h-96 rounded-3xl cursor-pointer transition-all duration-300 select-none
-              ${
-                selectedMethod === method.id
-                  ? 'bg-gray-800 text-white transform scale-105'
-                  : 'bg-gray-900 text-white hover:bg-gray-800 hover:scale-102'
-              }`}
-            onClick={() => setSelectedMethod(method.id)}
+              bg-gray-900 text-white 
+              hover:bg-gray-800 hover:scale-105`}
+            onClick={() => onSelect(method.id)}
           >
             <div className="flex flex-col items-center justify-center h-full p-8">
               <div className="mb-8 relative">
@@ -105,9 +46,8 @@ const GenerationMethodSelection: React.FC<GenerationMethodSelectionProps> = ({
                 </h3>
               </div>
             </div>
-            {selectedMethod === method.id && (
-              <div className="absolute inset-0 border-4 border-blue-500 rounded-3xl" />
-            )}
+            {/* hover 시 외곽선 효과 */}
+            <div className="absolute inset-0 rounded-3xl border-4 border-transparent hover:border-blue-500 transition-colors duration-300" />
           </div>
         ))}
       </div>
@@ -115,47 +55,41 @@ const GenerationMethodSelection: React.FC<GenerationMethodSelectionProps> = ({
   );
 };
 
-// 🔹 메인 페이지 컴포넌트
-const GenerationMethodPage = () => {
-  const [selectedMethod, setSelectedMethod] = useState<string>('');
-  const activeStep = 2;
+/** 메인 페이지 */
+const GenerationMethodPage: React.FC = () => {
   const navigate = useNavigate();
 
-  const handleNext = async () => {
-    const uuid = Cookies.get('travelPlanUUID');
-    if (!selectedMethod) {
-      alert('생성 방식을 선택해주세요!');
+  const handleSelect = async (method: 'camera' | 'manual') => {
+    if (method === 'manual') {
+      // 수동 생성 → 장소 선택 페이지 이동
+      navigate('/place');
       return;
     }
 
+    // 자동 생성
+    const uuid = Cookies.get('travelPlanUUID');
     if (!uuid) {
       alert('UUID 쿠키가 없습니다.');
       return;
     }
 
-    if (selectedMethod === 'camera') {
-      try {
-        await axios.post(
-          `http://localhost:8080/draft-plans/${uuid}/auto-schedule`
-        );
-        alert('자동 여행 일정 생성 요청이 완료되었습니다!');
-        // TODO: 다음 페이지 이동
-      } catch (error) {
-        console.error('서버 요청 실패:', error);
-        alert('요청 중 문제가 발생했습니다.');
-      }
-    } else if (selectedMethod === 'manual') {
-      navigate('/place'); // ✅ 이렇게 해야 정상 동작
+    try {
+      await axios.post(`http://localhost:8080/draft-plans/${uuid}/auto-schedule`);
+      alert('자동 여행 일정 생성 요청이 완료되었습니다!');
+      // TODO: 필요 시 다음 화면으로 이동
+    } catch (error) {
+      console.error('서버 요청 실패:', error);
+      alert('요청 중 문제가 발생했습니다.');
     }
   };
 
   return (
-    <TwoColumnLayout activeStep={activeStep} onNext={handleNext}>
-      <GenerationMethodSelection
-        selectedMethod={selectedMethod}
-        setSelectedMethod={setSelectedMethod}
-      />
-    </TwoColumnLayout>
+    <div className="flex h-screen w-full">
+      <Sidebar activeStep={2} />
+      <main className="flex-1 bg-white overflow-auto">
+        <GenerationMethodSelection onSelect={handleSelect} />
+      </main>
+    </div>
   );
 };
 

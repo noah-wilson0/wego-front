@@ -1,5 +1,5 @@
 // src/travel_plan/travel_plan_check.tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
@@ -24,8 +24,8 @@ interface Place {
   title: string;
   image: string;
   sequence: number;
-  longitude: number; // 서버 제공
-  latitude: number;  // 서버 제공
+  longitude: number;
+  latitude: number;
   start_time: string; // "HH:mm" or "HH:mm:ss"
   end_time: string;   // "HH:mm" or "HH:mm:ss"
 }
@@ -42,8 +42,8 @@ interface Accommodation {
 }
 interface DaySchedule {
   date: string;       // "yyyy-MM-dd"
-  start_time: string; // "HH:mm" or "HH:mm:ss"
-  end_time: string;   // "HH:mm" or "HH:mm:ss"
+  start_time: string;
+  end_time: string;
   places: Place[];
   accommodation: Accommodation | null;
 }
@@ -58,8 +58,6 @@ interface RouteInfo {
   daily_route: Record<string, RouteDetail[]>; // key: "yyyy-MM-dd"
 }
 interface TravelData {
-  // draft에는 slug가 있고, 회원/공유에는 createdAt이 있을 수 있지만
-  // 화면에서는 start/end/days/routes만 사용하므로 공통만 둡니다.
   start_date: string;
   end_date: string;
   days: DaySchedule[];
@@ -68,6 +66,14 @@ interface TravelData {
 
 /** 유틸 */
 const formatDuration = (seconds: number): string => `${Math.round(seconds / 60)}분`;
+
+/** 쿼리스트링 유틸 */
+const getQuery = (search: string) => new URLSearchParams(search);
+const withParam = (path: string, key: string, value: string) => {
+  const url = new URL(window.location.origin + path);
+  url.searchParams.set(key, value);
+  return url.pathname + url.search;
+};
 
 const TravelPlanCheck: React.FC = () => {
   const navigate = useNavigate();
@@ -81,11 +87,18 @@ const TravelPlanCheck: React.FC = () => {
   const [travelData, setTravelData] = useState<TravelData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 정산/권한
   const [isAuthForSettlement, setIsAuthForSettlement] = useState<boolean>(false);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+
+  // 저장 모달
   const [showSavedModal, setShowSavedModal] = useState(false);
 
+  // 지도 선택 마커
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
+
+  // 로그인 후 자동 저장을 트리거하는 플래그 (쿼리스트링 ?autoSave=1)
+  const autoSaveRequested = getQuery(location.search).get('autoSave') === '1';
 
   /** 여행 데이터 로드(임시/Draft, 회원/공유) */
   useEffect(() => {
@@ -121,7 +134,7 @@ const TravelPlanCheck: React.FC = () => {
     })();
   }, [token, travelPlanId, navigate]);
 
-  /** 정산 권한 */
+  /** 정산 권한 (로그인 여부 판단) */
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -138,6 +151,34 @@ const TravelPlanCheck: React.FC = () => {
       mounted = false;
     };
   }, []);
+
+  /** 비회원 → 로그인 후 돌아왔고 autoSave=1이면 자동 저장 */
+  useEffect(() => {
+    (async () => {
+      if (!authChecked) return;              // 로그인 체크 끝나야
+      if (!isAuthForSettlement) return;      // 여전히 비회원이면 X
+      if (!autoSaveRequested) return;        // 자동 저장 요청 없으면 X
+      if (!travelData) return;               // 데이터 준비 필요
+      if (token || travelPlanId) return;     // 공유/회원 일정은 자동 저장 X (임시 일정만)
+
+      try {
+        const uuid = Cookies.get('travelPlanUUID');
+        if (!uuid) return;
+
+        const res = await api.post(`/draft-plans/${uuid}`);
+        if (res.status === 200) {
+          Cookies.remove('travelPlanUUID');
+          setShowSavedModal(true);
+          // 주소에서 autoSave 파라미터 제거 (뒤로가기로 또 저장되는 것 방지)
+          const cleaned = withParam(location.pathname + location.search, 'autoSave', '0');
+          navigate(cleaned, { replace: true });
+        }
+      } catch (err) {
+        console.error('[autoSave] 실패', err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, isAuthForSettlement, autoSaveRequested, travelData]);
 
   /** content_id -> 좌표 lookup (서버에서 위경도 제공) */
   const idToCoord = useMemo(() => {
@@ -159,7 +200,7 @@ const TravelPlanCheck: React.FC = () => {
     return map;
   }, [travelData]);
 
-  /** 지도용 마커 계산 */
+  /** 지도용 마커 계산 (일차별, 전체 보기면 각각 1~N) */
   const mapMarkers: MapMarker[] = useMemo(() => {
     if (!travelData) return [];
     const markers: MapMarker[] = [];
@@ -169,10 +210,10 @@ const TravelPlanCheck: React.FC = () => {
       return selectedDay === dayIndex + 1;
     };
 
+    let runningOrder = 1;
     travelData.days.forEach((day, dayIdx) => {
       if (!dayFilter(day.date, dayIdx)) return;
 
-      // 장소
       day.places.forEach((p, idx) => {
         if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
         markers.push({
@@ -180,12 +221,11 @@ const TravelPlanCheck: React.FC = () => {
           position: { lat: p.latitude, lng: p.longitude },
           title: p.title,
           category: p.placeType,
-          order: idx + 1,
+          order: selectedDay === 'all' ? runningOrder++ : idx + 1,
           infoHtml: `<div>${p.start_time} ~ ${p.end_time}</div>`,
         });
       });
 
-      // 숙소
       if (day.accommodation) {
         const a = day.accommodation;
         if (typeof a.latitude === 'number' && typeof a.longitude === 'number') {
@@ -203,7 +243,7 @@ const TravelPlanCheck: React.FC = () => {
     return markers;
   }, [travelData, selectedDay]);
 
-  /** 지도용 경로(폴리라인) 계산 */
+  /** 지도용 경로(폴리라인) */
   const polylines: MapPolyline[] = useMemo(() => {
     if (!travelData) return [];
     const lines: MapPolyline[] = [];
@@ -281,8 +321,75 @@ const TravelPlanCheck: React.FC = () => {
       return { day: idx + 1, date: day.date, places: items };
     }) ?? [];
 
-  const filteredSchedules =
-    selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
+  const filteredSchedules = selectedDay === 'all' ? schedules : schedules.filter((s) => s.day === selectedDay);
+
+  /** 타입/색상 매핑 */
+  const getPlaceTypeInfo = (placeType: string) => {
+    switch (placeType) {
+      case 'A01':
+        return { color: 'bg-blue-500', textColor: 'text-blue-500', label: '명소' };
+      case 'A02':
+        return { color: 'bg-red-500', textColor: 'text-red-500', label: '음식점' };
+      case 'A03':
+        return { color: 'bg-emerald-500', textColor: 'text-emerald-500', label: '카페' };
+      case 'B01':
+        return { color: 'bg-gray-500', textColor: 'text-gray-500', label: '숙소' };
+      default:
+        return { color: 'bg-gray-400', textColor: 'text-gray-400', label: '기타' };
+    }
+  };
+
+  /** 편집/저장 동작 */
+  const redirectToLoginWith = (extraParam?: Record<string, string>) => {
+    const cur = new URL(window.location.href);
+    if (extraParam) {
+      Object.entries(extraParam).forEach(([k, v]) => cur.searchParams.set(k, v));
+    }
+    const redirect = encodeURIComponent(cur.pathname + cur.search);
+    navigate(`/login?redirect=${redirect}`);
+  };
+
+  const handleEdit = () => {
+    if (!isAuthForSettlement) {
+      // 편집 클릭 → 로그인만 유도
+      redirectToLoginWith();
+      return;
+    }
+    alert('편집 모드를 켭니다. (필요한 편집 UI는 추후 연결)');
+  };
+
+  const handleSave = async () => {
+    // 비회원이면 로그인으로 보내면서 autoSave=1을 붙여서 돌아오면 자동 저장
+    if (!isAuthForSettlement) {
+      redirectToLoginWith({ autoSave: '1' });
+      return;
+    }
+
+    // 로그인 상태에서 저장
+    try {
+      if (token || travelPlanId) {
+        // 공유/회원 뷰: 여기서는 실제 저장 API 정의가 없으므로 모달만 띄움
+        setShowSavedModal(true);
+      } else {
+        // 임시(Draft) 저장
+        const uuid = Cookies.get('travelPlanUUID');
+        if (!uuid) {
+          alert('임시 여행 일정 정보(UUID)가 없습니다.');
+          return;
+        }
+        const res = await api.post(`/draft-plans/${uuid}`);
+        if (res.status === 200) {
+          Cookies.remove('travelPlanUUID');
+          setShowSavedModal(true);
+        } else {
+          alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+    } catch (err) {
+      console.error('[save] 실패', err);
+      alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  };
 
   /** 사이드바 */
   const sidebarContent = (
@@ -312,14 +419,23 @@ const TravelPlanCheck: React.FC = () => {
     </>
   );
 
+  /** 사이드바 하단 버튼 (비회원도 보이되, 누르면 로그인/리다이렉트) */
   const sidebarButtons = (
     <>
-      <button
-        onClick={() => window.dispatchEvent(new Event('wego:open-settlement-sheet'))}
-        className="py-2 px-4 rounded-md text-base bg-violet-100 text-violet-700 hover:bg-violet-200"
-      >
-        정산 내역 입력
-      </button>
+      <div className="flex flex-col gap-2 mt-3">
+        <button
+          onClick={handleEdit}
+          className="py-2 px-4 rounded-md text-base bg-gray-200 text-gray-700 hover:bg-gray-300"
+        >
+          편집
+        </button>
+        <button
+          onClick={handleSave}
+          className="py-2 px-4 rounded-md text-base bg-red-500 text-white hover:bg-red-600"
+        >
+          저장
+        </button>
+      </div>
     </>
   );
 
@@ -339,10 +455,7 @@ const TravelPlanCheck: React.FC = () => {
         )}
       </div>
 
-      <div
-        className="flex-1 p-6 overflow-y-auto"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
+      <div className="flex-1 p-6 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <style>{`div::-webkit-scrollbar{display:none}`}</style>
         <div className="flex gap-12 transition-all duration-300 min-w-max">
           {filteredSchedules.map((schedule, dayIndex) => (
@@ -356,24 +469,7 @@ const TravelPlanCheck: React.FC = () => {
                 {schedule.places.map((place, placeIndex) => {
                   const isFirst = placeIndex === 0;
                   const isLast = placeIndex === schedule.places.length - 1;
-                  const info = (() => {
-                    switch (place.placeType) {
-                      case 'A01':
-                        return { color: 'bg-blue-500', textColor: 'text-blue-500', label: '명소' };
-                      case 'A02':
-                        return { color: 'bg-red-500', textColor: 'text-red-500', label: '음식점' };
-                      case 'A03':
-                        return {
-                          color: 'bg-emerald-500',
-                          textColor: 'text-emerald-500',
-                          label: '카페',
-                        };
-                      case 'B01':
-                        return { color: 'bg-gray-500', textColor: 'text-gray-500', label: '숙소' };
-                      default:
-                        return { color: 'bg-gray-400', textColor: 'text-gray-400', label: '기타' };
-                    }
-                  })();
+                  const info = getPlaceTypeInfo(place.placeType);
 
                   return (
                     <div key={placeIndex} className="flex items-start mb-8">
@@ -387,14 +483,9 @@ const TravelPlanCheck: React.FC = () => {
                         />
                       </div>
 
-                      <div
-                        className="ml-4 flex-1"
-                        style={{ marginTop: isFirst ? '0px' : '178px' }}
-                      >
+                      <div className="ml-4 flex-1" style={{ marginTop: isFirst ? '0px' : '178px' }}>
                         <div className="flex flex-col bg-white border border-gray-200 rounded-lg p-3 w-full max-w-xs">
-                          {place.time && (
-                            <p className="text-sm text-gray-500 mb-3">{place.time}</p>
-                          )}
+                          {place.time && <p className="text-sm text-gray-500 mb-3">{place.time}</p>}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <h3 className="font-medium text-sm">{place.title}</h3>
@@ -419,15 +510,23 @@ const TravelPlanCheck: React.FC = () => {
     </div>
   );
 
-  /** 정산 */
+  /** 정산 (권한 체크 상태에 따라) */
+  // ✅ 변경: 공유자(token 존재)면 로그인 여부와 관계없이 Settlement 표시.
+  //          일반 접근(비회원)일 때만 로그인 버튼 UI가 보이도록 함.
   const settlementContent = authChecked ? (
-    <Settlement
-      isAuthenticated={isAuthForSettlement}
-      onRequireLogin={() => {
-        const redirect = encodeURIComponent(location.pathname + location.search);
-        navigate(`/login?redirect=${redirect}`);
-      }}
-    />
+    token ? (
+      <Settlement
+        isAuthenticated={true} // 공유자는 비로그인이어도 정산 탭을 볼 수 있게 허용
+      />
+    ) : (
+      <Settlement
+        isAuthenticated={isAuthForSettlement}
+        onRequireLogin={() => {
+          const redirect = encodeURIComponent(location.pathname + location.search);
+          navigate(`/login?redirect=${redirect}`);
+        }}
+      />
+    )
   ) : (
     <div className="h-full flex items-center justify-center text-gray-400">확인 중...</div>
   );

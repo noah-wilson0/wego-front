@@ -1,6 +1,6 @@
-// src/travel_plan/components/UnifiedFourColumnLayout.tsx
 import React, { useState } from 'react';
 import GoogleMapView from './GoogleMapView';
+import Sidebar from './Sidebar';
 import type { LatLng, MapMarker } from './mapTypes';
 
 type Mode = 'place' | 'accommodation';
@@ -52,41 +52,26 @@ const UnifiedFourColumnLayout: React.FC<UnifiedFourColumnLayoutProps> = ({
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   const panelTitle =
-    panelTitleOverride ??
-    (mode === 'place' ? '선택된 장소' : '선택된 숙소');
+    panelTitleOverride ?? (mode === 'place' ? '선택된 장소' : '선택된 숙소');
 
   const emptyText =
-    panelEmptyTextOverride ??
-    (mode === 'place' ? '선택된 장소가 없습니다.' : '선택된 숙소가 없습니다.');
+    panelEmptyTextOverride ?? (mode === 'place' ? '선택된 장소가 없습니다.' : '선택된 숙소가 없습니다.');
 
   return (
     <div className="flex h-screen">
-      {/* 왼쪽 사이드바 */}
-      <aside className="w-[125px] bg-white p-6 flex flex-col justify-between">
-        <div>
-          <div className="text-2xl font-bold mb-10">LOGO</div>
-          <nav className="flex flex-col gap-4 text-sm">
-            <div className={activeStep === 1 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 1. 시간 선택
-            </div>
-            <div className={activeStep === 2 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 2. 생성 방식 선택
-            </div>
-            <div className={activeStep === 3 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 3. 장소 선택
-            </div>
-            <div className={activeStep === 4 ? 'text-blue-600 font-semibold' : 'text-gray-400'}>
-              Step 4. 숙소 선택
-            </div>
-          </nav>
-        </div>
-        <button
-          className="mt-10 bg-black text-white py-2 px-4 rounded-md text-base"
-          onClick={onNext}
-        >
-          다음
-        </button>
-      </aside>
+      {/* 공통 사이드바 (스텝 모드) */}
+      <Sidebar
+        activeStep={activeStep}
+        onStepChange={setActiveStep}
+        footer={
+          <button
+            className="mt-10 bg-black text-white py-2 px-4 rounded-md text-base"
+            onClick={onNext}
+          >
+            다음
+          </button>
+        }
+      />
 
       {/* 가운데 본문 - 고정 35% */}
       <div className="w-[35%] p-4 overflow-auto">

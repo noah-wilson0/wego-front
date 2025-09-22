@@ -53,6 +53,9 @@ const CategoryTag = () => (
 
 const TravelPlanAccommodation: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  // 🔎 Enter/아이콘 클릭으로 확정된 검색어(있으면 서버 검색 모드)
+  const [activeKeyword, setActiveKeyword] = useState("");
+
   const [accommodations, setAccommodations] = useState<AccommWithMeta[]>([]);
   const [selectedByNight, setSelectedByNight] = useState<(Accommodation | null)[]>([]);
 
@@ -150,18 +153,18 @@ const TravelPlanAccommodation: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 목록 초기화
+  // 목록 초기화(마운트 시)
   useEffect(() => {
     setAccommodations([]);
     setPage(0);
     setHasMore(true);
   }, []);
 
-  // 페이지 변경 시 로드
+  // 페이지 또는 검색키워드 변경 시 로드
   useEffect(() => {
     loadAccommodations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, activeKeyword]);
 
   const loadAccommodations = async () => {
     if (!hasMore || loading) return;
@@ -174,9 +177,27 @@ const TravelPlanAccommodation: React.FC = () => {
 
     setLoading(true);
     try {
-      const res = await axios.get(
-        `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/B01/paged?page=${page}&size=20`
-      );
+      let url: string;
+
+      if (activeKeyword && activeKeyword.trim().length > 0) {
+        // ✅ 서버 검색 모드 (숙소: B01 고정)
+        const params = new URLSearchParams({
+          uuid,
+          keyword: activeKeyword,
+          page: String(page),
+          size: "20",
+        });
+        params.append("sort", "averageRating,desc");
+        params.append("sort", "likeCount,desc");
+        params.append("placeTypes", "B01");
+
+        url = `http://localhost:8080/places/search?${params.toString()}`;
+      } else {
+        // 📃 기존 목록 API (그대로 유지)
+        url = `http://localhost:8080/draft-plans/${encodeURIComponent(uuid)}/B01/paged?page=${page}&size=20`;
+      }
+
+      const res = await axios.get(url);
 
       const newData: AccommWithMeta[] = res.data.content.map((item: any) => ({
         id: item.contentId,
@@ -254,7 +275,7 @@ const TravelPlanAccommodation: React.FC = () => {
     [travelInfo.destination]
   );
 
-  // 선택된 숙소 마커(보라색) — order 전달(숫자는 표시하지 않고 아이콘만 사용)
+  // 선택된 숙소 마커(보라색)
   const accommodationMarkers: MapMarker[] = useMemo(() => {
     const idToCoord = new Map(
       accommodations.map((a) => [
@@ -275,7 +296,7 @@ const TravelPlanAccommodation: React.FC = () => {
               title: meta.name,
               position: { lat: meta.lat as number, lng: meta.lng as number },
               category: "B01",
-              order: idx + 1, // 전달만(숫자 렌더링은 Map에서 아이콘 처리)
+              order: idx + 1,
               infoHtml: `
                 <div style="max-width:200px">
                   <div style="font-weight:600;margin-bottom:4px">${meta.name}</div>
@@ -288,7 +309,7 @@ const TravelPlanAccommodation: React.FC = () => {
       .filter((m): m is MapMarker => !!m);
   }, [selectedByNight, accommodations]);
 
-  // 이전 단계에서 고른 장소 마커(카테고리 반영) + 선택 순서(order) 유지
+  // 이전 단계에서 고른 장소 마커
   const placeMarkers: MapMarker[] = useMemo(() => {
     return savedPlaces
       .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
@@ -297,7 +318,7 @@ const TravelPlanAccommodation: React.FC = () => {
         title: p.name,
         position: { lat: p.lat as number, lng: p.lng as number },
         category: (p.category ?? "A01") as "A01" | "A02" | "A03",
-        order: idx + 1, // 선택 순서 번호(1..N)
+        order: idx + 1,
         infoHtml: `
           <div style="max-width:200px">
             <div style="font-weight:600;margin-bottom:4px">${p.name}</div>
@@ -312,7 +333,7 @@ const TravelPlanAccommodation: React.FC = () => {
     return [...placeMarkers, ...accommodationMarkers];
   }, [placeMarkers, accommodationMarkers]);
 
-  // ✅ 다음 버튼: 모든 Night 채움 검증 + 서버 저장 + 라우트 모달
+  // ✅ 다음 버튼
   const handleNext = async () => {
     const allFilled =
       selectedByNight.length === travelInfo.nights && selectedByNight.every(Boolean);
@@ -329,7 +350,6 @@ const TravelPlanAccommodation: React.FC = () => {
     }
 
     try {
-      // Night 수만큼 날짜 배열 생성 (체크인 기준)
       const dates: string[] = [];
       const base = new Date(travelInfo.startDate);
       for (let i = 0; i < travelInfo.nights; i++) {
@@ -337,7 +357,6 @@ const TravelPlanAccommodation: React.FC = () => {
         dates.push(d.toISOString().split("T")[0]);
       }
 
-      // 각 Night에 선택된 숙소 id 매핑
       const requestBody = dates.map((date, idx) => ({
         date,
         contentId: (selectedByNight[idx] as Accommodation).id,
@@ -355,6 +374,15 @@ const TravelPlanAccommodation: React.FC = () => {
       console.error(err);
     }
   };
+
+  // 🔍 검색 트리거: Enter/아이콘 클릭 시 호출 (서버 검색 전환)
+  const handleSearch = useCallback(() => {
+    const kw = searchTerm.trim();
+    setAccommodations([]);
+    setPage(0);
+    setHasMore(true);
+    setActiveKeyword(kw); // 빈 문자열이면 목록 모드로 자동 전환
+  }, [searchTerm]);
 
   // 선택된 숙소 패널
   const SelectedPanel = (
@@ -487,13 +515,28 @@ const TravelPlanAccommodation: React.FC = () => {
             </div>
           </div>
 
+          {/* 🔍 검색: 아이콘 클릭/Enter 로 서버 검색 (placeTypes=B01) */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+              aria-label="검색"
+              title="검색"
+            >
+              <Search className="h-4 w-4" />
+            </button>
             <input
               type="text"
               placeholder="숙소명을 검색해보세요"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSearch();
+                }
+              }}
               className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -504,10 +547,13 @@ const TravelPlanAccommodation: React.FC = () => {
             )}
 
             {accommodations
+              // 목록 모드일 때만(서버 검색이 아닐 때만) 로컬 필터 적용 유지
               .filter((a) =>
-                searchTerm.trim()
-                  ? a.name.toLowerCase().includes(searchTerm.toLowerCase())
-                  : true
+                activeKeyword
+                  ? true
+                  : searchTerm.trim()
+                    ? a.name.toLowerCase().includes(searchTerm.toLowerCase())
+                    : true
               )
               .map((a, index) => (
                 <div
