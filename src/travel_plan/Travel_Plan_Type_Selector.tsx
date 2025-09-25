@@ -1,6 +1,7 @@
 // src/travel_plan/GenerationMethodPage.tsx
 import React, { useState } from 'react';
 import axios from 'axios';
+
 import Cookies from 'js-cookie';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
