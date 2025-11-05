@@ -11,6 +11,9 @@ import TravelPlace from './travel_plan/travel_plan_place'
 import TravelAccommodation from'./travel_plan/travel_plan_accommodation'
 import TravelRoute from './travel_plan/travel_plan_route'
 import TravelCheck from './travel_plan/travel_plan_check'
+import AiEditPage from './travel_plan/ai_edit' 
+import EditTravelPlan from './travl_plan_edit/EditTravelPlan'
+import EditTravelPlanPlaceAddr from './travl_plan_edit/EditTravelPlanPlaceAdd'
 
 import Login from './member/login'
 
@@ -60,6 +63,12 @@ const TravelPlanTimeStep: React.FC = () => {
       <Route path="/check" element={<TravelCheck />} />           {/* 생성 모드 */}
       <Route path="/check/:travelPlanId" element={<TravelCheck />} />   {/* 수정 모드 */}
       <Route path="/check/t/:token" element={<TravelCheck />} />   {/* 동행자 수정 모드 */}
+
+      <Route path="/ai-edit" element={<AiEditPage />} />
+
+      <Route path="/edit-travel-plan" element={<EditTravelPlan />} />
+      <Route path="/edit-travel-plan-place-add" element={<EditTravelPlanPlaceAddr />} />
+      
 
       <Route path="/login" element={<Login/>} />
 
