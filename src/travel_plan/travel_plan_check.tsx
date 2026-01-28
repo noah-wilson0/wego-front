@@ -329,22 +329,24 @@ const TravelPlanCheck: React.FC = () => {
     navigate(`/login?redirect=${redirect}`);
   };
 
-  /** ✅ AI편집: 누구나 사용 가능 */
+  /**  AI편집: 누구나 사용 가능
+   * 일단 일정 주인만 사용가능한 형태로 구현하겠다.
+   */
   const handleOpenAiEdit = () => {
-    if (token) {
-      navigate(`/ai-edit?mode=share&token=${encodeURIComponent(token)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
-      return;
-    }
+    // if (token) {
+    //   navigate(`/ai-edit?mode=share&token=${encodeURIComponent(token)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
+    //   return;
+    // }
     if (travelPlanId) {
-      navigate(`/ai-edit?mode=member&id=${encodeURIComponent(travelPlanId)}&travelPlanId=${encodeURIComponent(travelPlanId)}`);
+      navigate("/ai-edit", { state: { mode: "member", id: travelPlanId, travelPlanId } });
       return;
     }
-    const uuid = Cookies.get('travelPlanUUID');
-    if (!uuid) {
-      alert('임시 일정 정보(UUID)를 찾을 수 없습니다.');
-      return;
-    }
-    navigate(`/ai-edit?mode=draft&uuid=${encodeURIComponent(uuid)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
+    // const uuid = Cookies.get('travelPlanUUID');
+    // if (!uuid) {
+    //   alert('임시 일정 정보(UUID)를 찾을 수 없습니다.');
+    //   return;
+    // }
+    // navigate(`/ai-edit?mode=draft&uuid=${encodeURIComponent(uuid)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
   };
 
   /** ✅ 편집 버튼: edit 화면으로 travelPlanId 함께 전달 */

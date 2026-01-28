@@ -11,7 +11,7 @@ import TravelPlace from './travel_plan/travel_plan_place'
 import TravelAccommodation from'./travel_plan/travel_plan_accommodation'
 import TravelRoute from './travel_plan/travel_plan_route'
 import TravelCheck from './travel_plan/travel_plan_check'
-import AiEditPage from './travel_plan/ai_edit' 
+import AiEditPage from './travl_plan_edit/ai_edit' 
 import EditTravelPlan from './travl_plan_edit/EditTravelPlan'
 import EditTravelPlanPlaceAddr from './travl_plan_edit/EditTravelPlanPlaceAdd'
 

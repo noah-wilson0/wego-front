@@ -1,4 +1,3 @@
-// src/travel_plan/components/AiEditLayout.tsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import GoogleMapView from "./GoogleMapView";
@@ -15,6 +14,9 @@ interface Props {
   polylines?: MapPolyline[];
   selectedMarkerId?: string | null;
   onMarkerClick?: (id: string | null) => void;
+
+  /** 👇 추가: 오른쪽 패널을 지도 대신 덮어쓸 콘텐츠 */
+  rightContent?: React.ReactNode;
 }
 
 const AiEditLayout: React.FC<Props> = ({
@@ -28,6 +30,9 @@ const AiEditLayout: React.FC<Props> = ({
   polylines = [],
   selectedMarkerId = null,
   onMarkerClick,
+
+  /** 👇 추가 */
+  rightContent,
 }) => {
   const navigate = useNavigate();
   const [showConfirm, setShowConfirm] = useState(false);
@@ -37,7 +42,6 @@ const AiEditLayout: React.FC<Props> = ({
       {/* 왼쪽 사이드바 */}
       <aside className="w-[180px] bg-white border-r border-gray-200 p-6 flex flex-col justify-between">
         <div>
-          {/* 로고 */}
           <button
             onClick={() => setShowConfirm(true)}
             className="text-left text-2xl font-bold mb-8 hover:opacity-80"
@@ -63,16 +67,20 @@ const AiEditLayout: React.FC<Props> = ({
         {children}
       </main>
 
-      {/* 오른쪽 지도 */}
-      <section className="flex-[4] bg-gray-100">
-        <GoogleMapView
-          center={mapCenter}
-          zoom={mapZoom}
-          markers={mapMarkers}
-          polylines={polylines}
-          selectedMarkerId={selectedMarkerId ?? null}
-          onMarkerClick={onMarkerClick}
-        />
+      {/* 오른쪽 패널: rightContent가 있으면 그걸, 없으면 지도 */}
+      <section className="flex-[4] bg-gray-100 overflow-hidden">
+        {rightContent ? (
+          <div className="h-full w-full">{rightContent}</div>
+        ) : (
+          <GoogleMapView
+            center={mapCenter}
+            zoom={mapZoom}
+            markers={mapMarkers}
+            polylines={polylines}
+            selectedMarkerId={selectedMarkerId ?? null}
+            onMarkerClick={onMarkerClick}
+          />
+        )}
       </section>
 
       {/* 나가기 확인 모달 */}
