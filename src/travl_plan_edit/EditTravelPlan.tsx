@@ -6,6 +6,9 @@ import EditTravelPlanLayout from "./components/EditTravelPlanLayout";
 import type { MapMarker, MapPolyline, LatLng } from "../travel_plan/components/mapTypes";
 import { ArrowLeftRight } from "lucide-react";
 
+// ✅ 공용 DTO
+import type { TravelPlanResponse, PlaceType, RouteItem } from "./dto/TravelPlanResponse";
+
 // 재사용 컴포넌트
 import SavedPlaceCard from "./components/StoragePlaceCard";
 import PlaceStoragePanel from "../travl_plan_edit/components/PlaceStoragePanel";
@@ -33,46 +36,6 @@ const api = axios.create({
 });
 
 /** -------------------- 타입 -------------------- */
-type PlaceType = "A01" | "A02" | "A03" | "B01";
-
-interface ServerPlace {
-  content_id: string;
-  placeType: PlaceType;
-  title: string;
-  image: string;
-  sequence: number;
-  longitude: number;
-  latitude: number;
-  start_time: string; // "HH:mm"
-  end_time: string;   // "HH:mm"
-}
-
-interface ServerDay {
-  date: string;       // "yyyy-MM-dd"
-  start_time: string; // "HH:mm"
-  end_time: string;   // "HH:mm"
-  places: ServerPlace[];
-}
-
-interface ServerRouteLeg {
-  sequence: number;
-  origin: string;
-  destination: string;
-  duration: number; // seconds
-}
-
-interface ServerTravelData {
-  label: string;
-  start_date: string;
-  end_date: string;
-  days: ServerDay[];
-  routes: {
-    route_type: string | null;
-    dailyRoutes: Record<string, ServerRouteLeg[]>;
-  }[];
-  createdAt?: string;
-}
-
 interface StoragePlace {
   contentId: string;
   name: string;
@@ -101,8 +64,8 @@ interface RenderPlace {
 interface DayPlan {
   day: number;
   date: string;       // "yyyy-MM-dd"
-  start_time: string; // "HH:mm"
-  end_time: string;   // "HH:mm"
+  startTime: string;  // "HH:mm"
+  endTime: string;    // "HH:mm"
   items: RenderPlace[];
 }
 
@@ -142,7 +105,11 @@ function partsToHHMM(ampm: "오전" | "오후", hour12: number, min: number) {
   const ms = m.toString().padStart(2, "0");
   return `${hs}:${ms}`;
 }
-const toLocalTime = (hhmm: string) => `${hhmm}:00`; // 백엔드 포맷 "HH:mm:ss"
+
+// ✅ 백엔드가 LocalTime @JsonFormat("HH:mm") 이면 HH:mm만 보내는게 안전함.
+// const toLocalTime = (hhmm: string) => `${hhmm}:00`; // (기존)
+// ✅ 추천(500 방지): HH:mm 그대로 보냄
+const toLocalTime = (hhmm: string) => hhmm;
 
 /** 🔹 이동 시간 행 */
 function TravelTimeRow({ minutes }: { minutes: number }) {
@@ -161,7 +128,6 @@ function TravelTimeRow({ minutes }: { minutes: number }) {
 }
 
 /** -------------------- 인라인 시작/종료시간 에디터 -------------------- */
-/** 컨테이너와 내부 요소 사이즈를 전반적으로 축소해 버튼이 테두리 안에 들어오도록 조정 */
 function StartTimeEditor({
   date,
   startHHMM,
@@ -175,7 +141,6 @@ function StartTimeEditor({
   onLocalChange: (start: string, end: string) => void;
   onCommit: (date: string, start: string, end: string) => void;
 }) {
-  // 각각의 로컬 파츠 상태
   const s0 = hhmmToParts(startHHMM);
   const e0 = hhmmToParts(endHHMM);
   const [sAmpm, setSAmpm] = useState<"오전" | "오후">(s0.ampm);
@@ -185,10 +150,8 @@ function StartTimeEditor({
   const [eHour, setEHour] = useState<number>(e0.hour);
   const [eMin, setEMin] = useState<number>(e0.min);
 
-  // 어떤 것을 현재 컨트롤에 보여줄지
   const [mode, setMode] = useState<"start" | "end">("start");
 
-  // 외부 값 변경시 동기화
   useEffect(() => {
     const p = hhmmToParts(startHHMM);
     setSAmpm(p.ampm); setSHour(p.hour); setSMin(p.min);
@@ -198,7 +161,6 @@ function StartTimeEditor({
     setEAmpm(p.ampm); setEHour(p.hour); setEMin(p.min);
   }, [endHHMM]);
 
-  // 디바운스 커밋
   const tRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleCommit = (nextStart: string, nextEnd: string) => {
     if (tRef.current) clearTimeout(tRef.current);
@@ -207,7 +169,6 @@ function StartTimeEditor({
     }, 400);
   };
 
-  // 공통 변경 처리
   const applyChange = (target: "start" | "end", field: "ampm" | "hour" | "min", value: number | "오전" | "오후") => {
     let sA = sAmpm, sH = sHour, sM = sMin;
     let eA = eAmpm, eH = eHour, eM = eMin;
@@ -228,33 +189,26 @@ function StartTimeEditor({
     scheduleCommit(nextStart, nextEnd);
   };
 
-  // 현재 모드에 보여줄 값
   const a = mode === "start" ? sAmpm : eAmpm;
   const h = mode === "start" ? sHour : eHour;
   const m = mode === "start" ? sMin : eMin;
 
   return (
     <div className="mb-3">
-      {/* 크기 축소: gap-1 / h-7 / px-2 py-1.5 */}
       <div className="flex flex-nowrap items-center gap-1 border rounded-xl px-2 py-1.5 text-[13px] text-gray-700">
-        {/* 라벨 */}
         <span className="text-gray-500 mr-1 shrink-0 whitespace-nowrap">
           {mode === "start" ? "시작" : "종료"}
         </span>
 
-        {/* 오전/오후 (좁은 폭) */}
         <select
           className="h-7 px-2 rounded-md bg-white border border-gray-200 text-gray-700 mr-1 shrink-0"
           value={a}
-          onChange={(e) =>
-            applyChange(mode, "ampm", e.target.value as "오전" | "오후")
-          }
+          onChange={(e) => applyChange(mode, "ampm", e.target.value as "오전" | "오후")}
         >
           <option value="오전">오전</option>
           <option value="오후">오후</option>
         </select>
 
-        {/* 시 (폭 축소) */}
         <input
           type="number"
           min={1}
@@ -268,7 +222,6 @@ function StartTimeEditor({
         />
         <span className="mr-1 shrink-0">:</span>
 
-        {/* 분 (폭 축소) */}
         <input
           type="number"
           min={0}
@@ -281,7 +234,6 @@ function StartTimeEditor({
           className="h-7 w-12 text-center border border-gray-200 rounded-md shrink-0"
         />
 
-        {/* 스왑 버튼 (더 컴팩트) */}
         <button
           type="button"
           aria-label={mode === "start" ? "종료 편집으로 전환" : "시작 편집으로 전환"}
@@ -347,50 +299,55 @@ export default function EditTravelPlan() {
   };
 
   /** 서버 응답 → 화면 상태 변환 */
-  const applyServerPlan = (data: ServerTravelData) => {
+  const applyServerPlan = (data: TravelPlanResponse) => {
     setLabel(data.label || "여행지");
-    setHeaderDates(data.start_date && data.end_date ? `${data.start_date} - ${data.end_date}` : "");
+    setHeaderDates(data.startDate && data.endDate ? `${data.startDate} - ${data.endDate}` : "");
 
-    const days: DayPlan[] = data.days.map((d, idx) => {
-      const items: RenderPlace[] = d.places.map((p) => {
+    const days: DayPlan[] = (data.days ?? []).map((d, idx) => {
+      const items: RenderPlace[] = (d.places ?? []).map((p) => {
         const meta = PT_META[p.placeType];
         const safeImg = p.image && p.image.trim() ? p.image : "/placeholder.jpg";
         return {
-          id: p.content_id,
+          id: p.contentId, // ✅ camel
           title: p.title,
           tag: meta.tag,
           placeType: p.placeType,
           colorClass: meta.colorClass,
-          time: p.start_time && p.end_time ? `${p.start_time}-${p.end_time}` : undefined,
+          time: p.startTime && p.endTime ? `${p.startTime}-${p.endTime}` : undefined, // ✅ camel
           lat: p.latitude,
           lng: p.longitude,
           image: safeImg,
         };
       });
+
       return {
         day: idx + 1,
-        date: d.date,
-        start_time: d.start_time || "10:00",
-        end_time: d.end_time || "22:00",
+        date: String(d.date),
+        startTime: d.startTime || "10:00",
+        endTime: d.endTime || "22:00",
         items,
       };
     });
+
     setDayPlans(days);
 
     const tt: Record<number, Record<number, number>> = {};
-    for (const r of data.routes ?? []) {
-      const daily = r.dailyRoutes || {};
-      for (const key of Object.keys(daily)) {
-        const segments = daily[key] || [];
-        const dayNo = data.days.findIndex((d) => d.date === key) + 1;
-        if (!dayNo || dayNo < 1) continue;
-        if (!tt[dayNo]) tt[dayNo] = {};
-        for (const seg of segments) {
-          const minutes = Math.ceil((seg.duration ?? 0) / 60);
-          tt[dayNo][seg.sequence] = minutes;
-        }
+    const dailyRoutes = data.routes?.dailyRoutes ?? [];
+
+    for (const dr of dailyRoutes) {
+      const key = dr.routeDate;
+      const segments: RouteItem[] = dr.routes ?? [];
+
+      const dayNo = (data.days ?? []).findIndex((d) => String(d.date) === key) + 1;
+      if (!dayNo || dayNo < 1) continue;
+
+      if (!tt[dayNo]) tt[dayNo] = {};
+      for (const seg of segments) {
+        const minutes = Math.ceil((seg.duration ?? 0) / 60);
+        tt[dayNo][seg.sequence] = minutes;
       }
     }
+
     setTravelTimes(tt);
   };
 
@@ -401,7 +358,7 @@ export default function EditTravelPlan() {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get<ServerTravelData>(`/travel-plans/${travelPlanId}/me/edit`);
+        const res = await api.get<TravelPlanResponse>(`/travel-plans/${travelPlanId}/me/edit`);
         if (!mounted) return;
         applyServerPlan(res.data);
       } catch (e) {
@@ -472,7 +429,7 @@ export default function EditTravelPlan() {
 
   /** -------------------- 서버 호출 -------------------- */
   const callInsert = async (toDate: string, index: number, contentId: string) => {
-    const res = await api.post<ServerTravelData>(
+    const res = await api.post<TravelPlanResponse>(
       `/travel-plans/${travelPlanId}/edit/days/${toDate}`,
       { index, contentId }
     );
@@ -483,7 +440,7 @@ export default function EditTravelPlan() {
     fromDate: string,
     body: { fromIndex: number; toDay: string; toIndex: number; contentId: string }
   ) => {
-    const res = await api.patch<ServerTravelData>(
+    const res = await api.patch<TravelPlanResponse>(
       `/travel-plans/${travelPlanId}/edit/days/${fromDate}`,
       body
     );
@@ -491,7 +448,7 @@ export default function EditTravelPlan() {
   };
 
   const callDelete = async (fromDate: string, index: number, contentId: string) => {
-    const res = await api.delete<ServerTravelData>(
+    const res = await api.delete<TravelPlanResponse>(
       `/travel-plans/${travelPlanId}/edit/days/${fromDate}`,
       { data: { index, contentId } }
     );
@@ -502,7 +459,7 @@ export default function EditTravelPlan() {
   const patchDayTime = async (date: string, startHHMM: string, endHHMM: string) => {
     if (!travelPlanId) return;
     try {
-      const res = await api.patch<ServerTravelData>(
+      const res = await api.patch<TravelPlanResponse>(
         `/travel-plans/${travelPlanId}/edit/days/${date}/time`,
         {
           startTime: toLocalTime(startHHMM),
@@ -727,7 +684,6 @@ export default function EditTravelPlan() {
   /** -------------------- 본문 -------------------- */
   const mainContent = (
     <div className="bg-white h-full flex flex-col">
-      {/* 헤더 */}
       <div className="p-6 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
@@ -748,7 +704,6 @@ export default function EditTravelPlan() {
         </div>
       </div>
 
-      {/* 본문: 보관함 + 일정 */}
       <div className="flex-1 p-6 overflow-hidden">
         <DndContext
           sensors={sensors}
@@ -758,15 +713,12 @@ export default function EditTravelPlan() {
           onDragEnd={handleDragEnd}
         >
           <section className="grid grid-cols-[320px_1fr] gap-6 h-full">
-            {/* 보관함 */}
             <div className="flex flex-col overflow-hidden">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-base font-semibold">장소 보관함</div>
                 <button
                   className="inline-flex items-center gap-1 rounded-lg bg-black text-white px-3 py-2 text-sm"
-                  onClick={() =>
-                    navigate("/edit-travel-plan-place-add", { state: { travelPlanId, label } })
-                  }
+                  onClick={() => navigate("/edit-travel-plan-place-add", { state: { travelPlanId, label } })}
                 >
                   장소 추가
                 </button>
@@ -794,7 +746,6 @@ export default function EditTravelPlan() {
               </PlaceStoragePanel>
             </div>
 
-            {/* 일정: 우측 가로 스크롤 래퍼 */}
             <div
               className="overflow-x-auto overscroll-contain"
               ref={daysScrollRef}
@@ -829,22 +780,18 @@ export default function EditTravelPlan() {
                         wrap.scrollLeft += e.deltaY as number;
                       }}
                     >
-                      {/* 일차 헤더 + 날짜 */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-base font-semibold">{dp.day}일차</div>
                         <div className="text-sm text-gray-400">{dp.date}</div>
                       </div>
 
-                      {/* 시작/종료 시간 에디터 (PATCH 연동) */}
                       <StartTimeEditor
                         date={dp.date}
-                        startHHMM={dp.start_time}
-                        endHHMM={dp.end_time}
+                        startHHMM={dp.startTime}
+                        endHHMM={dp.endTime}
                         onLocalChange={(s, e) =>
                           setDayPlans((prev) =>
-                            prev.map((d, i) =>
-                              i === dpIdx ? { ...d, start_time: s, end_time: e } : d
-                            )
+                            prev.map((d, i) => (i === dpIdx ? { ...d, startTime: s, endTime: e } : d))
                           )
                         }
                         onCommit={(date, s, e) => patchDayTime(date, s, e)}
@@ -890,7 +837,6 @@ export default function EditTravelPlan() {
             </div>
           </section>
 
-          {/* 드래그 오버레이 */}
           <DragOverlay dropAnimation={{ duration: 140 }}>
             {activeItem ? (
               activeItem.fromContainer === "storage" ? (

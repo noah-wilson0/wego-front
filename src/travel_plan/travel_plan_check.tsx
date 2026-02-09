@@ -9,6 +9,8 @@ import TravelPlanSavedModal from './components/travelPlanSavedModal';
 import FullCheckColumnLayout from './components/FullCheckColumnLayout';
 import type { MapMarker, MapPolyline, LatLng } from './components/mapTypes';
 
+import type { TravelPlanResponse } from '../travl_plan_edit/dto/TravelPlanResponse';
+
 /** axios */
 const api = axios.create({
   baseURL: 'http://localhost:8080',
@@ -17,53 +19,6 @@ const api = axios.create({
 
 /** 타입 */
 type Mode = 'create' | 'edit';
-
-interface Place {
-  content_id: string;
-  placeType: 'A01' | 'A02' | 'A03' | 'B01';
-  title: string;
-  image: string;
-  sequence: number;
-  longitude: number;
-  latitude: number;
-  start_time: string;
-  end_time: string;
-}
-interface Accommodation {
-  content_id: string;
-  placeType: 'B01';
-  title: string;
-  image: string;
-  sequence: number;
-  longitude: number;
-  latitude: number;
-  start_time: string;
-  end_time: string;
-}
-interface DaySchedule {
-  date: string;
-  start_time: string;
-  end_time: string;
-  places: Place[];
-  accommodation: Accommodation | null;
-}
-interface RouteDetail {
-  sequence: number;
-  origin: string;
-  destination: string;
-  duration: number;
-}
-interface RouteInfo {
-  route_type: string | null;
-  daily_route: Record<string, RouteDetail[]>;
-}
-interface TravelData {
-  slug: string;
-  start_date: string;
-  end_date: string;
-  days: DaySchedule[];
-  routes: RouteInfo[];
-}
 
 /** 유틸 */
 const formatDuration = (seconds: number): string => `${Math.round(seconds / 60)}분`;
@@ -83,7 +38,7 @@ const TravelPlanCheck: React.FC = () => {
   const mode: Mode = travelPlanId ? 'edit' : 'create';
 
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
-  const [travelData, setTravelData] = useState<TravelData | null>(null);
+  const [travelData, setTravelData] = useState<TravelPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [isAuthForSettlement, setIsAuthForSettlement] = useState<boolean>(false);
@@ -98,19 +53,19 @@ const TravelPlanCheck: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        let data: TravelData;
+        let data: TravelPlanResponse;
 
         if (token) {
           const res = await api.get(`/travel-plans/${token}`, { withCredentials: true });
-          data = res.data as TravelData;
+          data = res.data as TravelPlanResponse;
         } else if (travelPlanId) {
           const res = await api.get(`/travel-plans/${travelPlanId}/me`);
-          data = res.data as TravelData;
+          data = res.data as TravelPlanResponse;
         } else {
           const uuid = Cookies.get('travelPlanUUID');
           if (!uuid) throw new Error('MISSING_UUID');
           const tempRes = await api.get(`/draft-plans/${uuid}`);
-          data = tempRes.data as TravelData;
+          data = tempRes.data as TravelPlanResponse;
         }
 
         setTravelData(data);
@@ -173,13 +128,14 @@ const TravelPlanCheck: React.FC = () => {
     const map: Record<string, { lat: number; lng: number; title?: string }> = {};
     travelData.days.forEach((d) => {
       d.places.forEach((p) => {
-        map[p.content_id] = { lat: p.latitude, lng: p.longitude, title: p.title };
+        map[p.contentId] = { lat: p.latitude, lng: p.longitude, title: p.title };
       });
-      if (d.accommodation) {
-        map[d.accommodation.content_id] = {
-          lat: d.accommodation.latitude,
-          lng: d.accommodation.longitude,
-          title: d.accommodation.title,
+      const acc = (d as any).accommodation as any;
+      if (acc) {
+        map[acc.contentId] = {
+          lat: acc.latitude,
+          lng: acc.longitude,
+          title: acc.title,
         };
       }
     });
@@ -202,24 +158,24 @@ const TravelPlanCheck: React.FC = () => {
       day.places.forEach((p, idx) => {
         if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
         markers.push({
-          id: `place-${day.date}-${p.content_id}`,
+          id: `place-${day.date}-${p.contentId}`,
           position: { lat: p.latitude, lng: p.longitude },
           title: p.title,
           category: p.placeType,
           order: selectedDay === 'all' ? runningOrder++ : idx + 1,
-          infoHtml: `<div>${p.start_time} ~ ${p.end_time}</div>`,
+          infoHtml: `<div>${p.startTime} ~ ${p.endTime}</div>`,
         });
       });
 
-      if (day.accommodation) {
-        const a = day.accommodation;
-        if (typeof a.latitude === 'number' && typeof a.longitude === 'number') {
+      const acc = (day as any).accommodation as any;
+      if (acc) {
+        if (typeof acc.latitude === 'number' && typeof acc.longitude === 'number') {
           markers.push({
-            id: `acc-${day.date}-${a.content_id}`,
-            position: { lat: a.latitude, lng: a.longitude },
-            title: a.title,
+            id: `acc-${day.date}-${acc.contentId}`,
+            position: { lat: acc.latitude, lng: acc.longitude },
+            title: acc.title,
             category: 'B01',
-            infoHtml: `<div>${a.start_time} ~ ${a.end_time} • 숙소</div>`,
+            infoHtml: `<div>${acc.startTime} ~ ${acc.endTime} • 숙소</div>`,
           });
         }
       }
@@ -237,23 +193,22 @@ const TravelPlanCheck: React.FC = () => {
       return selectedDay === dayIndex + 1;
     };
 
-    travelData.routes.forEach((routeInfo) => {
-      Object.entries(routeInfo.daily_route || {}).forEach(([date, arr]) => {
-        const dayIndex = travelData.days.findIndex((d) => d.date === date);
-        if (dayIndex === -1 || !dayFilter(date, dayIndex)) return;
+    travelData.routes?.dailyRoutes?.forEach((dayRoute) => {
+      const date = dayRoute.routeDate;
+      const dayIndex = travelData.days.findIndex((d) => d.date === date);
+      if (dayIndex === -1 || !dayFilter(date, dayIndex)) return;
 
-        arr.forEach((rd) => {
-          const o = idToCoord[rd.origin];
-          const d = idToCoord[rd.destination];
-          if (!o || !d) return;
-          lines.push({
-            id: `route-${date}-${rd.sequence}`,
-            path: [
-              { lat: o.lat, lng: o.lng },
-              { lat: d.lat, lng: d.lng },
-            ],
-            options: { strokeColor: '#7c3aed' },
-          });
+      (dayRoute.routes || []).forEach((rd) => {
+        const o = idToCoord[rd.origin];
+        const d = idToCoord[rd.destination];
+        if (!o || !d) return;
+        lines.push({
+          id: `route-${date}-${rd.sequence}`,
+          path: [
+            { lat: o.lat, lng: o.lng },
+            { lat: d.lat, lng: d.lng },
+          ],
+          options: { strokeColor: '#7c3aed' },
         });
       });
     });
@@ -275,30 +230,32 @@ const TravelPlanCheck: React.FC = () => {
 
   const schedules =
     travelData?.days.map((day, idx) => {
-      const routes = travelData.routes.find((r) => r.daily_route[day.date])?.daily_route[day.date] ?? [];
+      const routes =
+        travelData.routes?.dailyRoutes?.find((dr) => dr.routeDate === day.date)?.routes ?? [];
+
       const items = [
         ...day.places.map((p) => {
-          const r = routes.find((rt) => rt.origin === p.content_id);
+          const r = routes.find((rt) => rt.origin === p.contentId);
           return {
-            id: p.content_id,
+            id: p.contentId,
             title: p.title,
             image: p.image,
-            time: `${p.start_time}~${p.end_time}`,
+            time: `${p.startTime}~${p.endTime}`,
             placeType: p.placeType,
             duration: r ? formatDuration(r.duration) : undefined,
           };
         }),
-        ...(day.accommodation
+        ...(((day as any).accommodation
           ? [
               {
-                id: day.accommodation.content_id,
-                title: day.accommodation.title,
-                image: day.accommodation.image,
-                time: `${day.accommodation.start_time}~${day.accommodation.end_time}`,
-                placeType: day.accommodation.placeType,
+                id: (day as any).accommodation.contentId,
+                title: (day as any).accommodation.title,
+                image: (day as any).accommodation.image,
+                time: `${(day as any).accommodation.startTime}~${(day as any).accommodation.endTime}`,
+                placeType: (day as any).accommodation.placeType,
               },
             ]
-          : []),
+          : []) as any[]),
       ];
       return { day: idx + 1, date: day.date, places: items };
     }) ?? [];
@@ -329,24 +286,11 @@ const TravelPlanCheck: React.FC = () => {
     navigate(`/login?redirect=${redirect}`);
   };
 
-  /**  AI편집: 누구나 사용 가능
-   * 일단 일정 주인만 사용가능한 형태로 구현하겠다.
-   */
   const handleOpenAiEdit = () => {
-    // if (token) {
-    //   navigate(`/ai-edit?mode=share&token=${encodeURIComponent(token)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
-    //   return;
-    // }
     if (travelPlanId) {
       navigate("/ai-edit", { state: { mode: "member", id: travelPlanId, travelPlanId } });
       return;
     }
-    // const uuid = Cookies.get('travelPlanUUID');
-    // if (!uuid) {
-    //   alert('임시 일정 정보(UUID)를 찾을 수 없습니다.');
-    //   return;
-    // }
-    // navigate(`/ai-edit?mode=draft&uuid=${encodeURIComponent(uuid)}${travelPlanId ? `&travelPlanId=${encodeURIComponent(travelPlanId)}` : ''}`);
   };
 
   /** ✅ 편집 버튼: edit 화면으로 travelPlanId 함께 전달 */
@@ -425,7 +369,7 @@ const TravelPlanCheck: React.FC = () => {
     </>
   );
 
-  /** 🔧 사이드바 하단 버튼 (편집 토글/적용/취소 제거) */
+  /** 🔧 사이드바 하단 버튼 */
   const sidebarButtons = (
     <div className="flex flex-col gap-2 mt-3">
       <button
@@ -436,7 +380,6 @@ const TravelPlanCheck: React.FC = () => {
         AI편집
       </button>
 
-      {/* 👉 편집: travelPlanId를 state로 전달 */}
       <button
         onClick={handleOpenEdit}
         className="py-2 px-4 rounded-md text-base bg-gray-200 text-gray-700 hover:bg-gray-300"
@@ -459,12 +402,12 @@ const TravelPlanCheck: React.FC = () => {
       <div className="p-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h1 className="text-4xl font-bold">{travelData?.slug ?? '여행'}</h1>
+            <h1 className="text-4xl font-bold">{travelData?.label ?? '여행'}</h1>
           </div>
         </div>
         {travelData && (
           <p className="text-sm text-gray-500">
-            {travelData.start_date} ~ {travelData.end_date}
+            {travelData.startDate} ~ {travelData.endDate}
           </p>
         )}
       </div>

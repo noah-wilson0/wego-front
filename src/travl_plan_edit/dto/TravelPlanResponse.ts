@@ -3,25 +3,31 @@
 /** ===============================
  * 서버 응답 DTO (TravelPlanResponse)
  * =============================== */
+/**
+ * 사용처
+ * travel_plan_check.tsx,
+ * EditTravelPlan.tsx,
+ * ai_edit.tsx
+ */
 
 export type PlaceType = "A01" | "A02" | "A03" | "B01";
 
 export interface PlaceItem {
-  content_id: string;
+  contentId: string;
   placeType: PlaceType;
   title: string;
   image: string;
   sequence: number;
   longitude: number;
   latitude: number;
-  start_time: string; // HH:mm
-  end_time: string;   // HH:mm
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
 }
 
 export interface DaySchedule {
   date: string;       // yyyy-MM-dd
-  start_time: string; // HH:mm
-  end_time: string;   // HH:mm
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
   places: PlaceItem[];
 }
 

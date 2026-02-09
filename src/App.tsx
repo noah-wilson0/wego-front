@@ -15,7 +15,7 @@ import AiEditPage from './travl_plan_edit/ai_edit'
 import EditTravelPlan from './travl_plan_edit/EditTravelPlan'
 import EditTravelPlanPlaceAddr from './travl_plan_edit/EditTravelPlanPlaceAdd'
 
-import Login from './member/login'
+import Login from './myPage/member/login'
 
 import Main from './main/mainPage'
 import Feed from './main/MainFeed'

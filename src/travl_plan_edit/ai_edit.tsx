@@ -7,41 +7,14 @@ import TravelPlanAiEditSchedulePlaceCard from "./components/TravelPlanAiEditSche
 import type { LatLng, MapMarker, MapPolyline } from "../travel_plan/components/mapTypes";
 import axios from "axios";
 
+// ✅ 공용 DTO import
+import type {
+  TravelPlanResponse,
+  PlaceType,
+} from "../travl_plan_edit/dto/TravelPlanResponse";
+
 /** -------------------- API -------------------- */
 const api = axios.create({ baseURL: "http://localhost:8080", withCredentials: true });
-
-/** -------------------- 타입 -------------------- */
-type PlaceType = "A01" | "A02" | "A03" | "B01";
-interface ServerPlace {
-  content_id: string;
-  placeType: PlaceType;
-  title: string;
-  image: string;
-  sequence: number;
-  longitude: number;
-  latitude: number;
-  start_time: string;
-  end_time: string;
-}
-interface ServerDay {
-  date: string;
-  start_time: string;
-  end_time: string;
-  places: ServerPlace[];
-}
-interface ServerRouteLeg {
-  sequence: number;
-  origin: string;
-  destination: string;
-  duration: number; // seconds
-}
-interface ServerTravelData {
-  label: string;
-  start_date: string;
-  end_date: string;
-  days: ServerDay[];
-  routes: { route_type: string | null; dailyRoutes: Record<string, ServerRouteLeg[]> }[];
-}
 
 /** -------------------- 상수 (칩/여백/열폭) -------------------- */
 const COL_W = 236; // 타임라인 열 너비
@@ -90,7 +63,7 @@ const AiEditPage: React.FC = () => {
   const travelPlanId =
     st.travelPlanId ?? st.id ?? qs.get("travelPlanId") ?? qs.get("id") ?? undefined;
 
-  const [plan, setPlan] = useState<ServerTravelData | null>(null);
+  const [plan, setPlan] = useState<TravelPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [persisting, setPersisting] = useState(false); // 저장/취소 중 여부
@@ -110,7 +83,7 @@ const AiEditPage: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get<ServerTravelData>(`/api/v1/app/revise-plans/${travelPlanId}/me`);
+        const res = await api.get<TravelPlanResponse>(`/api/v1/app/revise-plans/${travelPlanId}/me`);
         if (mounted) setPlan(res.data);
       } catch (e) {
         console.error("[AI Edit] 일정 불러오기 실패", e);
@@ -127,14 +100,17 @@ const AiEditPage: React.FC = () => {
   /** -------------------- 이동시간 매핑 -------------------- */
   const travelTimes = useMemo(() => {
     if (!plan) return {} as Record<string, Record<number, number>>;
+
     const map: Record<string, Record<number, number>> = {};
-    for (const r of plan.routes ?? []) {
-      for (const date of Object.keys(r.dailyRoutes || {})) {
-        const segs = r.dailyRoutes[date] || [];
-        if (!map[date]) map[date] = {};
-        for (const seg of segs) map[date][seg.sequence] = Math.ceil((seg.duration ?? 0) / 60);
-      }
-    }
+
+    (plan.routes?.dailyRoutes ?? []).forEach((dayRoute) => {
+      const date = dayRoute.routeDate;
+      if (!map[date]) map[date] = {};
+      (dayRoute.routes ?? []).forEach((seg) => {
+        map[date][seg.sequence] = Math.ceil((seg.duration ?? 0) / 60);
+      });
+    });
+
     return map;
   }, [plan]);
 
@@ -142,24 +118,26 @@ const AiEditPage: React.FC = () => {
   const mapMarkers: MapMarker[] = useMemo(() => {
     if (!plan || rightView !== "map") return [];
     let order = 1;
+
     return plan.days
       .flatMap((d) => (d.places || []).map((p) => ({ ...p, date: d.date })))
       .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
       .map((p) => ({
-        id: p.content_id,
+        id: p.contentId,
         position: { lat: p.latitude, lng: p.longitude },
         title: p.title,
         category: p.placeType,
         order: order++,
-        infoHtml: `<div>${p.title}<br/>${p.start_time ?? ""} ~ ${p.end_time ?? ""}</div>`,
+        infoHtml: `<div>${p.title}<br/>${p.startTime ?? ""} ~ ${p.endTime ?? ""}</div>`,
       }));
   }, [plan, rightView]);
 
   const polylines: MapPolyline[] = useMemo(() => {
     if (!plan || rightView !== "map") return [];
     const lines: MapPolyline[] = [];
+
     for (const day of plan.days) {
-      const pts = day.places.filter(
+      const pts = (day.places || []).filter(
         (p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)
       );
       for (let i = 0; i < pts.length - 1; i++) {
@@ -193,7 +171,7 @@ const AiEditPage: React.FC = () => {
     setSending(true);
 
     try {
-      const res = await api.post<ServerTravelData>(
+      const res = await api.post<TravelPlanResponse>(
         `/api/v1/app/revise-plans/${travelPlanId}/generate`,
         { prompt: txt }
       );
@@ -286,7 +264,7 @@ const AiEditPage: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold">{plan?.label ?? "여행"} · AI 편집</h1>
             <p className="text-sm text-gray-500">
-              {loading ? "불러오는 중..." : `${plan?.start_date ?? ""} ~ ${plan?.end_date ?? ""}`}
+              {loading ? "불러오는 중..." : `${plan?.startDate ?? ""} ~ ${plan?.endDate ?? ""}`}
             </p>
           </div>
 
@@ -402,18 +380,18 @@ const AiEditPage: React.FC = () => {
                       const seq = i + 1;
                       const minutes = travelTimes?.[day.date]?.[seq];
                       const time =
-                        p.start_time && p.end_time ? `${p.start_time}-${p.end_time}` : undefined;
+                        p.startTime && p.endTime ? `${p.startTime}-${p.endTime}` : undefined;
 
                       return (
-                        <React.Fragment key={`${day.date}-${p.content_id}`}>
+                        <React.Fragment key={`${day.date}-${p.contentId}`}>
                           <div className="flex items-stretch" style={{ gap: GUTTER_GAP }}>
                             <NumBadge n={seq} />
                             <div className="flex-1 min-w-0">
                               <TravelPlanAiEditSchedulePlaceCard
                                 place={{
-                                  id: p.content_id,
+                                  id: p.contentId,
                                   name: p.title,
-                                  category: p.placeType,
+                                  category: p.placeType as PlaceType,
                                   imageUrl: p.image?.trim() ? p.image : "/placeholder.jpg",
                                   time,
                                 }}
